@@ -11,13 +11,9 @@ class Quantizer(nn.Module):
         self.sym = sym
         self.dtype = dtype
         # Symmetric or Asymmetric
-        if self.sym:
-            self.q_min, self.q_max = torch.iinfo(dtype).min, torch.iinfo(dtype).max
-            self.q_diff = self.q_max - self.q_min
-        else:
-            self.q_min = 0
-            self.q_diff = torch.iinfo(dtype).max
-            self.q_max = self.q_diff
+        self.q_min = torch.iinfo(self.dtype).min
+        self.q_max = torch.iinfo(self.dtype).max
+
         self.w_a = w_a
         self.q_group_size = group_size
         self.tensor_shape = self.tensor.shape
@@ -31,14 +27,16 @@ class Quantizer(nn.Module):
 
     def compute_scales(self,tensor):
         self.max_val = tensor.max().item()
-        self.min_val = tensor.min().item()
-        scales = (self.max_val - self.min_val) / self.q_diff
+        if(self.sym):
+            scales = self.max_val/self.q_diff
+        else:
+            self.min_val = tensor.min().item()
+            scales = (self.max_val - self.min_val) / (self.q_max - self.q_min)
         return scales
 
     def compute_scales_dimension(self, tensor, dim=-1):
         if(dim>=0): # Row, Col, Group
             output_dim = tensor.shape[dim]
-            # store the scales
             scale = torch.zeros(output_dim)
             for index in range(output_dim):
                 sub_tensor = tensor.select(dim, index)
@@ -66,7 +64,10 @@ class Quantizer(nn.Module):
 
 
         # Zero Pointer
-        if self.zero_pointer:
+        if self.sym:
+            self.zero_point = 0
+
+        else:
             self.zero_point = self.q_min - (self.min_val / self.scales)
 
             # clip the zero_point to fall in [quantized_min, quantized_max]
@@ -77,11 +78,11 @@ class Quantizer(nn.Module):
             else:
                 # round and cast to int
                 self.zero_point = int(round(self.zero_point))
-        else:
-            self.zero_point = 0
+
 
     def quantize(self):
         tensor = self.tensor.clone()
+        self.q_min = torch.iinfo(self.dtype).min
         self.quantized_tensor = torch.round(tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
         return self.quantized_tensor.type(self.dtype)
     def dequantize(self, quantized_tensor):
@@ -110,6 +111,5 @@ class Quantizer(nn.Module):
 
         fig.tight_layout()
         plt.show()
-
 
 
