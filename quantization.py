@@ -5,10 +5,10 @@ from matplotlib.colors import ListedColormap
 import seaborn as sns
 
 class Quantizer(nn.Module):
-    def __init__(self, tensor, dtype, w_a=None, per='tensor',per_dim=None,  zero_pointer=True, group_size=-1, sym=True):
+    def __init__(self, tensor, dtype, w_a=None, per='tensor',per_dim=None, group_size=-1, symentric=True):
         super().__init__()
         self.tensor = tensor
-        self.sym = sym
+        self.symentric = symentric
         self.dtype = dtype
         # Symmetric or Asymmetric
         self.q_min = torch.iinfo(self.dtype).min
@@ -21,14 +21,12 @@ class Quantizer(nn.Module):
         self.per = per  # Wise --> Tensor, Channel, Group
         self.per_dim = per_dim
 
-
-        self.zero_pointer = zero_pointer
         self.compute_scale_zero_pointer()
 
     def compute_scales(self,tensor):
         self.max_val = tensor.max().item()
-        if(self.sym):
-            scales = self.max_val/self.q_diff
+        if(self.symentric):
+            scales = self.max_val/self.q_max
         else:
             self.min_val = tensor.min().item()
             scales = (self.max_val - self.min_val) / (self.q_max - self.q_min)
@@ -48,7 +46,6 @@ class Quantizer(nn.Module):
         else:
             self.scales =  self.compute_scales(tensor)
 
-
     def compute_scale_zero_pointer(self):
 
         if len(self.tensor_shape) == 2:  # Linear Layer
@@ -63,8 +60,7 @@ class Quantizer(nn.Module):
                 self.compute_scales_dimension(tensor, dim=0)
 
 
-        # Zero Pointer
-        if self.sym:
+        if self.symentric:
             self.zero_point = 0
 
         else:
