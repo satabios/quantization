@@ -1,1 +1,5 @@
-.idea/*
+# Ignore all files except .py files
+*
+
+# Except for python files
+!*.py
