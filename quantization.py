@@ -24,7 +24,7 @@ class Quantizer(nn.Module):
         self.compute_scale_zero_pointer()
 
     def compute_scales(self,tensor):
-        self.max_val = tensor.max().item()
+        self.max_val = tensor.abs().max().item()
         if(self.symentric):
             scales = self.max_val/self.q_max
         else:
@@ -53,7 +53,7 @@ class Quantizer(nn.Module):
                 self.compute_scales_dimension(self.tensor)
             elif(self.per == 'dim'):     # Per Row or Col
                 self.compute_scales_dimension(self.tensor, dim=self.per_dim)
-            else:                        # Per Group
+            elif(self.per == 'group'):   # Per Group
                 assert self.tensor_shape[1] % self.q_group_size == 0
                 assert self.tensor.dim() == 2 #For Linear
                 tensor = self.tensor.view(-1, self.q_group_size)
@@ -65,15 +65,32 @@ class Quantizer(nn.Module):
 
         else:
             self.zero_point = self.q_min - (self.min_val / self.scales)
+     
+            if(self.per_dim is not None):
+                # clip the zero_point to fall in [quantized_min, quantized_max]
+                zero_point_broadcasted = torch.ones_like(self.zero_point) * self.zero_point
+                
+                print(self.q_min, self.q_max)
 
-            # clip the zero_point to fall in [quantized_min, quantized_max]
-            if self.zero_point < self.q_min:
-                self.zero_point = self.q_min
-            elif self.zero_point > self.q_max:
-                self.zero_point = self.q_max
+                self.zero_point = torch.where(
+                                                self.zero_point < self.q_min,
+                                                self.q_min,
+                                                torch.where(
+                                                    self.zero_point > self.q_max,
+                                                    self.q_max,
+                                                    torch.round(zero_point_broadcasted).to(torch.int8)
+                                                )
+                                            )
             else:
-                # round and cast to int
-                self.zero_point = int(round(self.zero_point))
+
+                # clip the zero_point to fall in [quantized_min, quantized_max]
+                if self.zero_point < q_min_clip:
+                    self.zero_point = self.q_min
+                elif self.zero_point > q_min_clip:
+                    self.zero_point = self.q_max
+                else:
+                    # round and cast to int
+                    self.zero_point = int(round(self.zero_point))
 
 
     def quantize(self):

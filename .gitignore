@@ -1,5 +1,5 @@
 # Ignore all files except .py files
 *
-
+__pycache__/*
 # Except for python files
 !*.py
