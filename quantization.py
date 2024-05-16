@@ -69,8 +69,6 @@ class Quantizer(nn.Module):
             if(self.per_dim is not None):
                 # clip the zero_point to fall in [quantized_min, quantized_max]
                 zero_point_broadcasted = torch.ones_like(self.zero_point) * self.zero_point
-                
-                print(self.q_min, self.q_max)
 
                 self.zero_point = torch.where(
                                                 self.zero_point < self.q_min,
@@ -82,8 +80,7 @@ class Quantizer(nn.Module):
                                                 )
                                             )
             else:
-
-                # clip the zero_point to fall in [quantized_min, quantized_max]
+     
                 if self.zero_point < q_min_clip:
                     self.zero_point = self.q_min
                 elif self.zero_point > q_min_clip:

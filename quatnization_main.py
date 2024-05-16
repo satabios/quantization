@@ -63,7 +63,7 @@ test_tensor=torch.tensor(
 
 
 dtype=torch.int8
-quantizer = Quantizer(tensor=test_tensor, per='dim',per_dim=1, dtype=dtype, symentric=True)
+quantizer = Quantizer(tensor=test_tensor, per='dim',per_dim=0, dtype=dtype, symentric=True)
 print(test_tensor)
 print("scales:", quantizer.scales)
 quantized_tensor = quantizer.quantize()
