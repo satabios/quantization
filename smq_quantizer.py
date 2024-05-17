@@ -72,6 +72,7 @@ class W8A8(nn.Module):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
+        self.cnn = cnn
         if cnn:
             self.kernel_size = kernel_size
             self.stride = stride
@@ -176,8 +177,8 @@ class W8A8(nn.Module):
         return new_module
 
     def __repr__(self):
-        if cnn:
-            return f"W8A8Conv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None}, weight_quant={self.weight_quant_name}, act_quant={self.act_quant_name}, output_quant={self.output_quant_name})"
+        if self.cnn:
+            return f"W8A8Conv2d-smq({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None}, weight_quant={self.weight_quant_name}, act_quant={self.act_quant_name}, output_quant={self.output_quant_name})"
         
         else:
-            return f"W8A8Linear({self.in_features}, {self.out_features}, bias={self.bias is not None}, weight_quant={self.weight_quant_name}, act_quant={self.act_quant_name}, output_quant={self.output_quant_name})"
+            return f"W8A8Linear-smq({self.in_features}, {self.out_features}, bias={self.bias is not None}, weight_quant={self.weight_quant_name}, act_quant={self.act_quant_name}, output_quant={self.output_quant_name})"
