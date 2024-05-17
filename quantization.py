@@ -5,7 +5,7 @@ from matplotlib.colors import ListedColormap
 import seaborn as sns
 
 class Quantizer(nn.Module):
-    def __init__(self, tensor, dtype, w_a=None, per='tensor',per_dim=None, group_size=-1, symentric=True):
+    def __init__(self, tensor, dtype, w_a=None, per='tensor',per_dim=None, group_size=-1, symentric=False):
         super().__init__()
         self.tensor = tensor
         self.symentric = symentric
@@ -81,9 +81,9 @@ class Quantizer(nn.Module):
                                             )
             else:
      
-                if self.zero_point < q_min_clip:
+                if self.zero_point < self.q_min:
                     self.zero_point = self.q_min
-                elif self.zero_point > q_min_clip:
+                elif self.zero_point > self.q_max:
                     self.zero_point = self.q_max
                 else:
                     # round and cast to int
