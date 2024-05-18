@@ -62,15 +62,14 @@ class W8A8(nn.Module):
         act_quant="per_token",
         quantize_output=False,
         cnn=False,
-        dtype=None
+    
     ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         
         self.cnn = cnn
-        self.ype = dtype
-        self.dtype = torch.float16 if self.ype is not None else dtype 
+
         if cnn:
             self.kernel_size = kernel_size
             self.stride = stride
@@ -85,7 +84,7 @@ class W8A8(nn.Module):
             "weight",
             torch.randn(
                 self.weight_shape,
-                dtype=self.dtype,
+                dtype=torch.float16,
                 requires_grad=False,
             ),
         )
@@ -93,7 +92,7 @@ class W8A8(nn.Module):
             self.register_buffer(
                 "bias",
                 torch.zeros(
-                    (1, self.out_features), dtype=self.dtype, requires_grad=False
+                    (1, self.out_features), dtype=torch.float16, requires_grad=False
                 ),
             )
         else:
@@ -143,8 +142,7 @@ class W8A8(nn.Module):
                 module.out_features,
                 bias=module.bias is not None,
                 act_quant=act_quant,
-                quantize_output=quantize_output,
-                dtype=module.weight.data.dtype
+                quantize_output=quantize_output
             )
         elif isinstance(module, torch.nn.Conv2d):
             new_module = W8A8(
@@ -158,8 +156,7 @@ class W8A8(nn.Module):
                 bias=module.bias is not None,
                 act_quant=act_quant,
                 quantize_output=quantize_output,
-                cnn=True,
-                dtype=module.weight.data.dtype
+                cnn=True
             )
         else:
             raise ValueError("Unsupported module type")
