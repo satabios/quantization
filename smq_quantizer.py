@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from functools import partial
-
+import ipdb
 
 @torch.no_grad()
 def quantize_weight_per_channel_absmax(w, n_bits=8):
@@ -67,12 +67,15 @@ class W8A8(nn.Module):
         bias=True,
         act_quant="per_token",
         quantize_output=False,
-        cnn=False
+        cnn=False,
+        dtype=None
     ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
+        
         self.cnn = cnn
+        self.dtype = torch.float16 if dtype is not None else dtype 
         if cnn:
             self.kernel_size = kernel_size
             self.stride = stride
@@ -88,7 +91,7 @@ class W8A8(nn.Module):
             "weight",
             torch.randn(
                 self.weight_shape,
-                dtype=torch.float16,
+                dtype=self.dtype,
                 requires_grad=False,
             ),
         )
@@ -96,7 +99,7 @@ class W8A8(nn.Module):
             self.register_buffer(
                 "bias",
                 torch.zeros(
-                    (1, self.out_features), dtype=torch.float16, requires_grad=False
+                    (1, self.out_features), dtype=self.dtype, requires_grad=False
                 ),
             )
         else:
@@ -141,12 +144,15 @@ class W8A8(nn.Module):
     ):
         # Weight per_channel/per_tensor quantization; Activation per_token/per_tensor quantization
         if(isinstance(module, torch.nn.Linear)):
+            
+           
             new_module = W8A8(
                 module.in_features,
                 module.out_features,
                 module.bias is not None,
                 act_quant=act_quant,
                 quantize_output=quantize_output,
+                dtype=module.weight.data.dtype
             )
         elif(isinstance(module, torch.nn.Conv2d)): 
             new_module = W8A8(
@@ -160,6 +166,7 @@ class W8A8(nn.Module):
                 module.bias is not None,
                 act_quant=act_quant,
                 quantize_output=quantize_output,
+                dtype = module.weight.data.dtype
             )
         if weight_quant == "per_channel":
             new_module.weight = quantize_weight_per_channel_absmax(
