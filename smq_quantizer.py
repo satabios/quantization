@@ -1,26 +1,23 @@
 import torch
 from torch import nn
 from functools import partial
-import ipdb
+
 
 @torch.no_grad()
 def quantize_weight_per_channel_absmax(w, n_bits=8):
     # w: (out_features, in_features) : Linear
     # w: (out_channels, in_channels, kernel_size, kernel_size) : Conv2d
-    if(w.dim()==4):
+    if w.dim() == 4:
         w_copied = copy.deepcopy(w)
-        w = w.view(w.shape[0],-1)
+        w = w.view(w.shape[0], -1)
     scales = w.abs().max(dim=-1, keepdim=True)[0]
     q_max = 2 ** (n_bits - 1) - 1
     scales.clamp_(min=1e-5).div_(q_max)
-
-    if(w.dim()==4):
-        scales = scales.view(w_copied.shape[0],1,1,1)
-        w = w_copied # Copy back the original weights
-    
+    if w.dim() == 4:
+        scales = scales.view(w_copied.shape[0], 1, 1, 1)
+        w = w_copied  # Copy back the original weights
     w.div_(scales).round_().mul_(scales)
     return w
-
 
 @torch.no_grad()
 def quantize_weight_per_tensor_absmax(w, n_bits=8):
@@ -31,34 +28,31 @@ def quantize_weight_per_tensor_absmax(w, n_bits=8):
     w.div_(scales).round_().mul_(scales)
     return w
 
-
 @torch.no_grad()
 def quantize_activation_per_token_absmax(t, n_bits=8):
     t_shape = t.shape
-    t.view(-1, t_shape[-1])
+    t = t.view(-1, t_shape[-1])
     scales = t.abs().max(dim=-1, keepdim=True)[0]
     q_max = 2 ** (n_bits - 1) - 1
     scales.clamp_(min=1e-5).div_(q_max)
     t.div_(scales).round_().mul_(scales)
-    return t
-
+    return t.view(t_shape)  # Reshape back to original
 
 @torch.no_grad()
 def quantize_activation_per_tensor_absmax(t, n_bits=8):
     t_shape = t.shape
-    t.view(-1, t_shape[-1])
+    t = t.view(-1, t_shape[-1])
     scales = t.abs().max()
     q_max = 2 ** (n_bits - 1) - 1
     scales.clamp_(min=1e-5).div_(q_max)
     t.div_(scales).round_().mul_(scales)
-    return t
-
+    return t.view(t_shape)  # Reshape back to original
 
 class W8A8(nn.Module):
     def __init__(
         self,
-        in_features,  #C_in
-        out_features, #C_out
+        in_features,  # C_in
+        out_features,  # C_out
         kernel_size=None,
         stride=None,
         padding=None,
@@ -75,7 +69,8 @@ class W8A8(nn.Module):
         self.out_features = out_features
         
         self.cnn = cnn
-        self.dtype = torch.float16 if dtype is not None else dtype 
+        self.ype = dtype
+        self.dtype = torch.float16 if self.ype is not None else dtype 
         if cnn:
             self.kernel_size = kernel_size
             self.stride = stride
@@ -86,7 +81,6 @@ class W8A8(nn.Module):
         else:
             self.weight_shape = (self.out_features, self.in_features)
             
-
         self.register_buffer(
             "weight",
             torch.randn(
@@ -131,10 +125,10 @@ class W8A8(nn.Module):
     @torch.no_grad()
     def forward(self, x):
         q_x = self.act_quant(x)
-        if(self.weight.dim()==4):
-            y = torch.functional.F.conv2d(q_x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        if self.weight.dim() == 4:
+            y = torch.nn.functional.conv2d(q_x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
         else:
-            y = torch.functional.F.linear(q_x, self.weight, self.bias)
+            y = torch.nn.functional.linear(q_x, self.weight, self.bias)
         q_y = self.output_quant(y)
         return q_y
 
@@ -143,18 +137,16 @@ class W8A8(nn.Module):
         module, weight_quant="per_channel", act_quant="per_token", quantize_output=False
     ):
         # Weight per_channel/per_tensor quantization; Activation per_token/per_tensor quantization
-        if(isinstance(module, torch.nn.Linear)):
-            
-           
+        if isinstance(module, torch.nn.Linear):
             new_module = W8A8(
                 module.in_features,
                 module.out_features,
-                module.bias is not None,
+                bias=module.bias is not None,
                 act_quant=act_quant,
                 quantize_output=quantize_output,
                 dtype=module.weight.data.dtype
             )
-        elif(isinstance(module, torch.nn.Conv2d)): 
+        elif isinstance(module, torch.nn.Conv2d):
             new_module = W8A8(
                 module.in_channels,
                 module.out_channels,
@@ -163,11 +155,15 @@ class W8A8(nn.Module):
                 module.padding,
                 module.dilation,
                 module.groups,
-                module.bias is not None,
+                bias=module.bias is not None,
                 act_quant=act_quant,
                 quantize_output=quantize_output,
-                dtype = module.weight.data.dtype
+                cnn=True,
+                dtype=module.weight.data.dtype
             )
+        else:
+            raise ValueError("Unsupported module type")
+
         if weight_quant == "per_channel":
             new_module.weight = quantize_weight_per_channel_absmax(
                 module.weight, n_bits=8
@@ -178,14 +174,16 @@ class W8A8(nn.Module):
             )
         else:
             raise ValueError(f"Invalid weight_quant: {weight_quant}")
+
         new_module.weight_quant_name = weight_quant
+
         if module.bias is not None:
             new_module.bias = module.bias
+
         return new_module
 
     def __repr__(self):
         if self.cnn:
             return f"W8A8Conv2d-smq({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None}, weight_quant={self.weight_quant_name}, act_quant={self.act_quant_name}, output_quant={self.output_quant_name})"
-        
         else:
             return f"W8A8Linear-smq({self.in_features}, {self.out_features}, bias={self.bias is not None}, weight_quant={self.weight_quant_name}, act_quant={self.act_quant_name}, output_quant={self.output_quant_name})"
