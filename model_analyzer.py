@@ -11,6 +11,21 @@ import copy
 
 
 class ModelAnalyzer:
+    """
+    model_layer: This key holds the layers of the model as per their original order.
+    Conv2d_BatchNorm2d_ReLU: Stores sequences of layers where a Conv2d layer is followed by BatchNorm2d and then ReLU activation.
+    Conv2d_BatchNorm2d: Stores sequences of layers where a Conv2d layer is followed by BatchNorm2d.
+    Linear_ReLU: Stores sequences of layers where a Linear layer is followed by ReLU activation.
+    Linear_BatchNorm1d: Stores sequences of layers where a Linear layer is followed by BatchNorm1d.
+    name_type_shape: This contains information about each layer, including its name, type, and shape.
+    name_list: A list of names of all layers.
+    type_list: A list of types of all layers.
+    qat_layers: Stores layers that are candidates for Quantization-Aware Training (QAT). Specifically, layers from the keys Conv2d_BatchNorm2d_ReLU and Conv2d_BatchNorm2d are considered for QAT.
+    model_summary: Summary information about the model, including layer types, input and output shapes, and parameters.
+    catcher: This holds detailed information about layers, including their names, types, input data shapes (x), weights (w), and output data shapes (y).
+    fusion_layers: Dictionary containing different types of fusion layers such as Conv2d_BatchNorm2d_ReLU, Conv2d_BatchNorm2d, etc., along with their respective layer sequences.
+    sequences: Identified layer sequences based on predefined patterns like 'Conv2d_Linear', 'Linear_Linear', etc. Each sequence is associated with its matching layer names.
+    """
     def __init__(self, model):
         self.model = model
         self.mapped_layers = OrderedDict()
