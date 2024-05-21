@@ -149,36 +149,59 @@ class ModelAnalyzer:
 
     def find_patterns(self, model):
 
-        name_list = self.mapped_layers['name_type_shape'][:, 0]
-        type_list = self.mapped_layers['name_type_shape'][:, 1]
+        # name_list = self.mapped_layers['name_type_shape'][:, 0]
+        # type_list = self.mapped_layers['name_type_shape'][:, 1]
+        #
+        # conv_list = []
+        # for t_p in self.mapped_layers['catcher']['type_list']:
+        #     if (t_p == 'Conv2d'):
+        #         conv_list.append(t_p)
+        # self.mapped_layers['conv_list'] = conv_list
+        #
+        # conv_bn_idx = [index for index, layer in enumerate(self.mapped_layers['type_list']) if layer in ['Conv2d', 'BatchNorm2d']]
+        #
+        # arr = []
+        # for l_n, t_p in zip(name_list[conv_bn_idx], type_list[conv_bn_idx]):
+        #     arr.append((l_n, t_p))
+        # self.mapped_layers['conv_bn_l_n_t_p'] = np.asarray(arr)
+        #
+        # sorting_pairs = []
+        # idx = 0
+        # while idx < len(self.mapped_layers['conv_bn_l_n_t_p']):
+        #     layer_list = self.mapped_layers['conv_bn_l_n_t_p'][idx:idx + 3][:,1]
+        #
+        #     if (np.array_equal(layer_list, ['Conv2d', 'BatchNorm2d', 'Conv2d'])):
+        #         sorting_pairs.append(self.mapped_layers['conv_bn_l_n_t_p'][idx:idx + 3][:,0].tolist())
+        #         idx += 2
+        #     elif (np.array_equal(layer_list, ['Conv2d', 'Conv2d'])):
+        #         sorting_pairs.append(self.mapped_layers['conv_bn_l_n_t_p'][idx:idx + 2][:,0].tolist())
+        #         idx += 1
+        #     else:
+        #         idx += 1
 
-        conv_list = []
-        for l_n in self.mapped_layers['catcher']['name_list']:
-            if isinstance(eval(l_n), nn.Conv2d):
-                conv_list.append(l_n)
-        self.mapped_layers['conv_list'] = conv_list
 
-        conv_bn_idx = [index for index, layer in enumerate(self.mapped_layers['type_list']) if layer in ['Conv2d', 'BatchNorm2d']]
+        sequences = [['Conv2d', 'Linear'], ['Linear', 'Linear'], ['Conv2d', 'Conv2d'], ['Conv2d', 'BatchNorm2d', 'Conv2d']]
+        sequences_identifier = ['Conv2d_Linear', 'Linear_Linear', 'Conv2d_Conv2d','Conv2d_BatchNorm2d_Conv2d']
+        sek = {}
+        layer_types = self.mapped_layers['catcher']['type_list'][:,1]
+        layer_names = self.mapped_layers['catcher']['name_list']
+        def matches(sublist, seq):
+            return sublist == seq
 
-        arr = []
-        for l_n, t_p in zip(name_list[conv_bn_idx], type_list[conv_bn_idx]):
-            arr.append((l_n, t_p))
-        self.mapped_layers['conv_bn_l_n_t_p'] = np.asarray(arr)
+        for idx, seq in enumerate(sequences):
+            seq_len = len(seq)
+            results = []
 
-        sorting_pairs = []
-        idx = 0
-        while idx < len(self.mapped_layers['conv_bn_l_n_t_p']):
-            layer_list = self.mapped_layers['conv_bn_l_n_t_p'][idx:idx + 3][:,1]
+            # Loop through the layer types to find matching subsequences
+            for i in range(len(layer_types) - seq_len + 1):
+                if matches(layer_types[i:i + seq_len].tolist(), seq):
+                    matched_names = layer_names[i:i + seq_len]
+                    results.append(matched_names)
+            sek[sequences_identifier[idx]] = results
 
-            if (np.array_equal(layer_list, ['Conv2d', 'BatchNorm2d', 'Conv2d'])):
-                sorting_pairs.append(self.mapped_layers['conv_bn_l_n_t_p'][idx:idx + 3][:,0].tolist())
-                idx += 2
-            elif (np.array_equal(layer_list, ['Conv2d', 'Conv2d'])):
-                sorting_pairs.append(self.mapped_layers['conv_bn_l_n_t_p'][idx:idx + 2][:,0].tolist())
-                idx += 1
-            else:
-                idx += 1
-        self.mapped_layers['sorted_conv_list'] = sorting_pairs
+        self.mapped_layers['sequences'] = sek
+
+
     def layer_mapping(self, model):
         all_layers = self.get_all_layers(model)
         x, y = next(iter(dataloader['test']))
@@ -247,6 +270,15 @@ class ModelAnalyzer:
                         np.take(name_list, [i for i in range(i, i + 2)]).tolist()
                     )
                     i += 2
+                elif i + 1 < len(lst) and [l for l in lst[i: i + 2]] == [
+                    fusing_layers[0],
+                    fusing_layers[2],
+                ]:
+
+                    mapped_layers['Conv2d_ReLU'].append(
+                        np.take(name_list, [i for i in range(i, i + 2)]).tolist()
+                    )
+                    i += 2
 
                 elif i + 1 < len(lst) and [l for l in lst[i: i + 2]] == [
                     fusing_layers[3],
@@ -261,6 +293,14 @@ class ModelAnalyzer:
                     fusing_layers[4],
                 ]:
                     mapped_layers['Linear_BatchNorm1d'].append(
+                        np.take(name_list, [i for i in range(i, i + 2)]).tolist()
+                    )
+                    i += 2
+                elif i + 1 < len(lst) and [l for l in lst[i: i + 2]] == [
+                    fusing_layers[3],
+                    fusing_layers[2],
+                ]:
+                    mapped_layers['Linear_ReLU'].append(
                         np.take(name_list, [i for i in range(i, i + 2)]).tolist()
                     )
                     i += 2
@@ -291,32 +331,36 @@ class ModelAnalyzer:
         mapped_layers['model_summary'] = model_summary
 
         name_list = mapped_layers['name_type_shape'][:, 0]
-        layer_name_list = []
-        w, x, y = [], [], []
+        layer_name_list, layer_type_list = [], []
+        w, x, y, b = [], [], [], []
         for layer_name in name_list:
             layer = eval(layer_name)
-            if (isinstance(layer, (nn.Conv2d, nn.Linear))):
+            if (isinstance(layer, (nn.Conv2d, nn.Linear,nn.BatchNorm2d))):
                 layer_name_list.append(layer_name)
+                layer_type_list.append((type(layer),str(type(layer)).split('.')[-1][:-2]))
                 x.append(mapped_layers['model_summary'][layer_name]['x'][0])
                 w.append(mapped_layers['model_summary'][layer_name]['w'])
-                y.append(torch.stack(mapped_layers['model_summary'][layer_name]['y']))
-                # b.append(mapped_layers['model_summary'][layer_name]['b'])
+                if(isinstance(layer,(nn.Conv2d, nn.Linear))):
+                    y.append(torch.stack(mapped_layers['model_summary'][layer_name]['y']))
 
-        mapped_layers['catcher'] = {'name_list': layer_name_list, 'x': x, 'w': w, 'y': y}
-        mapped_layers['catcher'] = {'name_list': layer_name_list, 'x': x, 'w': w, 'y': y}
+
+
+        mapped_layers['catcher'] = {'name_list': layer_name_list,'type_list':np.asarray(layer_type_list), 'x': x, 'w': w, 'y': y}
+
+        fusion_layers = ['Conv2d_BatchNorm2d_ReLU', 'Conv2d_BatchNorm2d', 'Conv2d_ReLU', 'Linear_BatchNorm1d', 'Linear_ReLU']
+        fusion_dict = {}
+        for f_l in fusion_layers:
+            if(f_l in mapped_layers.keys()):
+                fusion_dict.update({f_l: mapped_layers[f_l]})
+        mapped_layers['fusion_layers'] = fusion_dict
+
+
         self.mapped_layers = mapped_layers
         self.find_patterns(model)
 
 
 
+
+
         return mapped_layers
 
-    # GMP
-    #         layer_of_interest=mapped_layers['name_type_shape'][:,0] # all layers with weights
-    #         Check for all with weights
-    # # Wanda
-    #
-    # def string_fixer(self, name_list):
-    #     for ind in range(len(name_list)):
-    #         modified_string = re.sub(r'\.(\[)', r'\1', name_list[ind])
-    #         name_list[ind] = modified_string
