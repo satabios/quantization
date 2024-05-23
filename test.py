@@ -1,53 +1,62 @@
 import torch
 from model_analyzer import ModelAnalyzer
 import torch.nn as nn
-from collections import defaultdict, OrderedDict
-class VGG(nn.Module):
-  ARCH = [64, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M']
+from activation_awareness import _search_module_scale, auto_clip_layer
+import torch.optim as optim
+from models import VGG
+from dataset import dataloader
+from sconce import sconce
 
-  def __init__(self) -> None:
-    super().__init__()
 
-    layers = []
-    counts = defaultdict(int)
-
-    def add(name: str, layer: nn.Module) -> None:
-      layers.append((f"{name}{counts[name]}", layer))
-      counts[name] += 1
-
-    in_channels = 3
-    for x in self.ARCH:
-      if x != 'M':
-        # conv-bn-relu
-        add("conv", nn.Conv2d(in_channels, x, 3, padding=1, bias=False))
-        add("bn", nn.BatchNorm2d(x))
-        add("relu", nn.ReLU(True))
-        in_channels = x
-      else:
-        # maxpool
-        add("pool", nn.MaxPool2d(2))
-
-    self.backbone = nn.Sequential(OrderedDict(layers))
-    self.classifier = nn.Linear(512, 10)
-
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
-    # backbone: [N, 3, 32, 32] => [N, 512, 2, 2]
-    x = self.backbone(x)
-
-    # avgpool: [N, 512, 2, 2] => [N, 512]
-    x = x.mean([2, 3])
-
-    # classifier: [N, 512] => [N, 10]
-    x = self.classifier(x)
-    return x
-
-# model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', weights=False)
 model = VGG()
+model.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
+
+sconces = sconce()
+sconces.model= model # Model Definition
+sconces.criterion = nn.CrossEntropyLoss() # Loss
+sconces.optimizer= optim.Adam(sconces.model.parameters(), lr=1e-4)
+sconces.scheduler = optim.lr_scheduler.CosineAnnealingLR(sconces.optimizer, T_max=200)
+sconces.dataloader = dataloader
+sconces.epochs = 5 #Number of time we iterate over the data
+sconces.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# print("Prior Scaling:", sconces.evaluate())
+
 ma = ModelAnalyzer(model)
+mapped_layers = ma.mapped_layers
+layer_list = [idx for idx, l_n in enumerate(mapped_layers['catcher']['name_list']) if isinstance(eval(l_n), (nn.Conv2d,nn.Linear))]
+final_scales = []
+with torch.no_grad():
+  for idxr in range(1,len(layer_list)):
+    idx_prev, idx_curr = layer_list[idxr-1], layer_list[idxr]
+
+    #  Find Activation Scales
+    x, w, y, module = mapped_layers['catcher']['x'][idx_curr], mapped_layers['catcher']['w'][idx_curr], \
+      mapped_layers['catcher']['y'][idx_curr], eval(mapped_layers['catcher']['name_list'][idx_curr])
+    scales = _search_module_scale(x, w, module, y)
+    final_scales.append(scales)
+
+    prev_module = eval(mapped_layers['catcher']['name_list'][idx_prev])
+
+    #  Apply A-Scales
+    if(prev_module.weight.data.dim()==4):
+      prev_module.weight.data.div_(scales.view(-1, 1, 1, 1))
+    elif(prev_module.weight.data.dim()==2):
+      prev_module.weight.data.div_(scales.view(1, -1))
+    mapped_layers['catcher']['w'][idx_prev] = prev_module.weight.data
+
+#Apply Smoothing
+
+# Find Clipping Range
+    #Applying Clipping
+    # best_max_val = auto_clip_layer( prev_w, prev_inp, n_bit=8, module=prev_module)
 
 
-for layer_name, layer_type in zip(ma.mapped_layers['name_list'], ma.mapped_layers['type_list']):
-    print(f"{layer_name} : {layer_type}")
+#Replace Layers and Real-Quantize
 
-for cn in range(len(ma.mapped_layers['sequences']['Conv2d_BatchNorm2d_Conv2d'] )):
-    print(ma.mapped_layers['sequences']['Conv2d_BatchNorm2d_Conv2d'][cn] )
+sconces.model= model
+print("Post Scaling:", sconces.evaluate())
+
+# final_scales.append(torch.zeros(1))
+# for idx in range(len(final_scales)):
+#   print(mapped_layers['catcher']['name_list'][idx],":",mapped_layers['catcher']['type_list'][idx][1],":",mapped_layers['catcher']['w'][idx].size(),":", final_scales[idx].shape)

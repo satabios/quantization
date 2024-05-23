@@ -2,6 +2,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import *
 from torchvision.transforms import *
 
+
 image_size = 32
 transforms = {
     "train": Compose([

@@ -350,13 +350,12 @@ class ModelAnalyzer:
         w, x, y, b = [], [], [], []
         for layer_name in name_list:
             layer = eval(layer_name)
-            if (isinstance(layer, (nn.Conv2d, nn.Linear,nn.BatchNorm2d))):
+            if (isinstance(layer, (nn.Conv2d, nn.Linear))):
                 layer_name_list.append(layer_name)
                 layer_type_list.append((type(layer),str(type(layer)).split('.')[-1][:-2]))
                 x.append(mapped_layers['model_summary'][layer_name]['x'][0])
                 w.append(mapped_layers['model_summary'][layer_name]['w'])
-                if(isinstance(layer,(nn.Conv2d, nn.Linear))):
-                    y.append(torch.stack(mapped_layers['model_summary'][layer_name]['y']))
+                y.append(torch.stack(mapped_layers['model_summary'][layer_name]['y']))
 
 
 
@@ -373,9 +372,10 @@ class ModelAnalyzer:
         self.mapped_layers = mapped_layers
         self.find_patterns(model)
 
+        layers_to_remove  = ['model_layer', 'Conv2d_BatchNorm2d_ReLU', 'Conv2d_BatchNorm2d', 'Linear_ReLU', 'Linear_BatchNorm1d',
+                   'name_type_shape']
+        for key in layers_to_remove:
+            self.mapped_layers.pop(key, None)
 
 
-
-
-        return mapped_layers
 
