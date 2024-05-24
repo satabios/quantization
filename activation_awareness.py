@@ -218,20 +218,29 @@ def auto_clip_layer(
 @torch.no_grad()
 def smq_scale(tensor):
     if(tensor.dim()==4):
-        return tensor.view(-1,tensor.shape[1]).abs().amax(dim=0).clamp(min=1e-5)
+        return tensor.view(tensor.shape[0]*tensor.shape[1],-1).abs().amax(dim=1).clamp(min=1e-5)
     else:
         return tensor.abs().amax(dim=0, keepdim=True).clamp(min=1e-5)
 
-@torch.no_grad()
+# @torch.no_grad()
 def get_weight_scale(weight):
-    if(weight.dim()==4):
+    # if(weight.dim()==4):
+    #     return weight.view(weight.shape[1], -1).abs().amax(dim=1).clamp(min=1e-5)
+    # else:
+    #     return weight.abs().amax(dim=0).clamp(min=1e-5)
+    if(weight.dim() == 4):
         return weight.view(weight.shape[1], -1).abs().amax(dim=1).clamp(min=1e-5)
     else:
         return weight.abs().amax(dim=0).clamp(min=1e-5)
 
+
 @torch.no_grad()
 def get_act_scale(activations):
+    # if (activations.dim() == 4):
+    #     return activations.view(-1,activations.shape[1]).abs().amax(dim=0).clamp(min=1e-5)
+    # else:
+    #     return activations.abs().amax(dim=0).clamp(min=1e-5)
     if (activations.dim() == 4):
-        return activations.view(-1,activations.shape[1]).abs().amax(dim=0).clamp(min=1e-5)
+        return activations.abs().amax(dim=0).amax(dim=2).amax(dim=-1).clamp(min=1e-5)
     else:
         return activations.abs().amax(dim=0).clamp(min=1e-5)

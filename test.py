@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from model_analyzer import ModelAnalyzer
 import torch.nn as nn
@@ -20,45 +21,49 @@ sconces.dataloader = dataloader
 sconces.epochs = 5 #Number of time we iterate over the data
 sconces.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# print("Prior Scaling:", sconces.evaluate())
+print("Prior Scaling:", sconces.evaluate())
 
 ma = ModelAnalyzer(model)
 mapped_layers = ma.mapped_layers
 layer_list = [idx for idx, l_n in enumerate(mapped_layers['catcher']['name_list']) if isinstance(eval(l_n), (nn.Conv2d,nn.Linear))]
+# Activation Aware Scaling
 final_scales = []
-# with torch.no_grad():
-#   for idxr in range(1,len(layer_list)):
-#     idx_prev, idx_curr = layer_list[idxr-1], layer_list[idxr]
-#
-#     #  Find Activation Scales
-#     x, w, y, module = mapped_layers['catcher']['x'][idx_curr], mapped_layers['catcher']['w'][idx_curr], \
-#       mapped_layers['catcher']['y'][idx_curr], eval(mapped_layers['catcher']['name_list'][idx_curr])
-#     scales = _search_module_scale(x, w, module, y)
-#     final_scales.append(scales)
-#
-#     prev_module = eval(mapped_layers['catcher']['name_list'][idx_prev])
-#
-#     #  Apply A-Scales
-#     if(prev_module.weight.data.dim()==4):
-#       prev_module.weight.data.div_(scales.view(-1, 1, 1, 1))
-#     elif(prev_module.weight.data.dim()==2):
-#       prev_module.weight.data.div_(scales.view(1, -1))
-#     mapped_layers['catcher']['w'][idx_prev] = prev_module.weight.data
+with torch.no_grad():
+  for idxr in range(1,len(layer_list)):
+    idx_prev, idx_curr = layer_list[idxr-1], layer_list[idxr]
+
+    #  Find Activation Scales
+    x, w, y, module = mapped_layers['catcher']['x'][idx_curr], mapped_layers['catcher']['w'][idx_curr], \
+      mapped_layers['catcher']['y'][idx_curr], eval(mapped_layers['catcher']['name_list'][idx_curr])
+    scales = _search_module_scale(x, w, module, y)
+    final_scales.append(scales)
+
+    prev_module = eval(mapped_layers['catcher']['name_list'][idx_prev])
+
+    #  Apply A-Scales
+    if(prev_module.weight.data.dim()==4):
+      prev_module.weight.data.div_(scales.view(-1, 1, 1, 1))
+    elif(prev_module.weight.data.dim()==2):
+      prev_module.weight.data.div_(scales.view(1, -1))
+    mapped_layers['catcher']['w'][idx_prev] = prev_module.weight.data
 
 #Run on calib data and record hooks
 #Apply Smoothing
 
 
+ma = ModelAnalyzer(model)
+mapped_layers = ma.mapped_layers
+linear_list  = [idx for idx, l_n in enumerate(mapped_layers['catcher']['name_list']) if isinstance(eval(l_n), nn.Linear)]
 
 with torch.no_grad():
 
-    for idx in range(1,len(layer_list)):
-        idx_prev, idx_curr = layer_list[idx - 1], layer_list[idx]
+    for idx in range(1,len(linear_list)):
+        idx_prev, idx_curr = linear_list[idx - 1], linear_list[idx]
         curr_layer, layer_inputs = eval(mapped_layers['catcher']['name_list'][idx_curr]),mapped_layers['catcher']['x'][idx_curr]
         prev_layer = eval(mapped_layers['catcher']['name_list'][idx_prev])
-        act_scales = smq_scale(layer_inputs.contiguous())
-        weight_scales = smq_scale(curr_layer.weight.data.contiguous())
-        alpha = 0
+        act_scales = get_act_scale(layer_inputs)
+        weight_scales = get_act_scale(curr_layer.weight.data)
+        alpha = 0.5
         scales = (
             (act_scales.pow(alpha) / weight_scales.pow(1 - alpha))
             .clamp(min=1e-5)
@@ -75,11 +80,13 @@ with torch.no_grad():
             prev_layer.weight.data.mul_(scales.view(-1, 1, 1, 1))
         else:
             prev_layer.weight.data.mul_(scales.view(-1, 1))
+    print("Post Scaling:", sconces.evaluate())
 
-
+        # break
 # Find Clipping Range
+# best_max_val = auto_clip_layer( prev_w, prev_inp, n_bit=8, module=prev_module)
     #Applying Clipping
-    # best_max_val = auto_clip_layer( prev_w, prev_inp, n_bit=8, module=prev_module)
+
 
 
 #Replace Layers and Real-Quantize
