@@ -6,6 +6,7 @@ from activation_awareness import _search_module_scale, auto_clip_layer, get_weig
 import torch.optim as optim
 from models import VGG
 from dataset import dataloader
+import gc
 from sconce import sconce
 
 
@@ -80,20 +81,23 @@ with torch.no_grad():
             prev_layer.weight.data.mul_(scales.view(-1, 1, 1, 1))
         else:
             prev_layer.weight.data.mul_(scales.view(-1, 1))
-    print("Post Scaling:", sconces.evaluate())
 
         # break
 # Find Clipping Range
 # best_max_val = auto_clip_layer( prev_w, prev_inp, n_bit=8, module=prev_module)
     #Applying Clipping
 
-
+sconces.model= model
+print("Post  Scaling:", sconces.evaluate())
 
 #Replace Layers and Real-Quantize
 
-sconces.model= model
-print("Post Scaling:", sconces.evaluate())
+
 
 # final_scales.append(torch.zeros(1))
 # for idx in range(len(final_scales)):
 #   print(mapped_layers['catcher']['name_list'][idx],":",mapped_layers['catcher']['type_list'][idx][1],":",mapped_layers['catcher']['w'][idx].size(),":", final_scales[idx].shape)
+
+
+gc.collect()
+torch.cuda.empty_cache()
