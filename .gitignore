@@ -3,3 +3,4 @@
 __pycache__/*
 # Except for python files
 !*.py
+!cuda_kernels/

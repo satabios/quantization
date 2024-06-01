@@ -1,6 +1,9 @@
 import torch
 import torch.nn.functional as F
 from torch.utils.cpp_extension import load
+import os
+os.environ['TORCH_CUDA_ARCH_LIST'] = '8.0;8.6'
+os.environ['MAX_JOBS'] = '12'
 
 # Compile and load the custom 2D convolution module
 conv2d_module = load(
