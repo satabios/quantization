@@ -2,8 +2,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
-
-__global__ void convolution2DKernel(const int8_t* input, const int8_t* kernel, int32_t* output,
+__global__ void convolution2DKernel(const int8_t* __restrict__ input, const int8_t* __restrict__ kernel, int32_t* output,
                                     const int inputWidth, const int inputHeight,
                                     const int kernelWidth, const int kernelHeight,
                                     const int stride, const int padding) {
@@ -29,7 +28,7 @@ __global__ void convolution2DKernel(const int8_t* input, const int8_t* kernel, i
     int8_t* sharedInput = sharedMemory;
     int8_t* sharedKernel = sharedMemory + sharedInputWidth * sharedInputHeight;
 
-    // Load input elements into shared memory with loop tiling
+    // Load input elements into shared memory
     for (int i = ty; i < sharedInputHeight; i += blockDim.y) {
         for (int j = tx; j < sharedInputWidth; j += blockDim.x) {
             int inputX = blockIdx.x * blockDim.x + j - padding;
@@ -52,10 +51,11 @@ __global__ void convolution2DKernel(const int8_t* input, const int8_t* kernel, i
 
     __syncthreads();
 
+    // Ensure threads within block are within output bounds
     if (x < outputWidth && y < outputHeight) {
         int32_t sum = 0;
 
-        // Perform convolution with loop unrolling and reordering
+        // Perform convolution using loop unrolling
         for (int i = 0; i < kernelHeight; i++) {
             #pragma unroll
             for (int j = 0; j < kernelWidth; j++) {
@@ -70,6 +70,7 @@ __global__ void convolution2DKernel(const int8_t* input, const int8_t* kernel, i
         output[y * outputWidth + x] = sum;
     }
 }
+
 
 
 

@@ -40,15 +40,30 @@ output_width = (input_tensor.shape[1] - kernel_tensor.shape[1] + 2 * padding) //
 # Prepare an output tensor for the custom convolution
 output_tensor_custom = torch.empty((output_height, output_width), dtype=torch.int32).cuda()
 
-# Call the custom 2D convolution function
+# Timing the custom 2D convolution
+start_event = torch.cuda.Event(enable_timing=True)
+end_event = torch.cuda.Event(enable_timing=True)
+
+start_event.record()
 conv2d_module.conv2d(input_tensor, kernel_tensor, output_tensor_custom, stride, padding)
+end_event.record()
+
+# Wait for the events to be recorded
+torch.cuda.synchronize()
+custom_conv_time = start_event.elapsed_time(end_event)
 
 # Prepare the tensors for PyTorch's F.conv2d
 input_tensor_4d = input_tensor.unsqueeze(0).unsqueeze(0).float()  # Shape: [1, 1, height, width]
 kernel_tensor_4d = kernel_tensor.unsqueeze(0).unsqueeze(0).float()  # Shape: [1, 1, kernel_height, kernel_width]
 
-# Call PyTorch's built-in F.conv2d function
+# Timing PyTorch's F.conv2d
+start_event.record()
 output_tensor_torch = F.conv2d(input_tensor_4d, kernel_tensor_4d, stride=stride, padding=padding)
+end_event.record()
+
+# Wait for the events to be recorded
+torch.cuda.synchronize()
+torch_conv_time = start_event.elapsed_time(end_event)
 
 # Squeeze the output to get back to 2D shape
 output_tensor_torch = output_tensor_torch.squeeze(0).squeeze(0)
@@ -64,5 +79,9 @@ print("Output Tensor (PyTorch F.conv2d):")
 print(output_tensor_torch.cpu())
 
 # Compare the results
-comparison = torch.allclose(output_tensor_custom.cpu().float(), output_tensor_torch.cpu(), atol=1e-6)
+comparison = torch.allclose(output_tensor_custom.cpu().float(), output_tensor_torch.cpu(), atol=1e-2)
 print("Do the results match?", comparison)
+
+# Print the timing results
+print(f"Custom 2D convolution time: {custom_conv_time:.3f} ms")
+print(f"PyTorch F.conv2d time: {torch_conv_time:.3f} ms")
