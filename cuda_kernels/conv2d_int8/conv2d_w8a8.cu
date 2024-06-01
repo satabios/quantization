@@ -1,108 +1,48 @@
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <stdio.h>
-__global__ void convolution2DKernel(const int8_t* __restrict__ input, const int8_t* __restrict__ kernel, int32_t* output,
-                                    const int inputWidth, const int inputHeight,
-                                    const int kernelWidth, const int kernelHeight,
-                                    const int stride, const int padding) {
-    extern __shared__ int8_t sharedMemory[];
 
-    // Calculate output dimensions
-    const int outputWidth = (inputWidth + 2 * padding - kernelWidth) / stride + 1;
-    const int outputHeight = (inputHeight + 2 * padding - kernelHeight) / stride + 1;
+__global__ void conv2d_kernel(float *input, float *kernel, float *output, 
+                              int batch_size, int channel_in, int width, int height, 
+                              int channel_out, int kernel_width, int kernel_height) {
+    int batch_idx = blockIdx.z;
+    int out_c = blockIdx.y;
+    int in_c = blockIdx.x;
+    int row = threadIdx.y;
+    int col = threadIdx.x;
 
-    // 2D indices for the current thread within the block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
+    int out_width = width - kernel_width + 1;
+    int out_height = height - kernel_height + 1;
 
-    // Global indices for the current thread
-    const int x = blockIdx.x * blockDim.x + tx;
-    const int y = blockIdx.y * blockDim.y + ty;
+    if (row < out_height && col < out_width) {
+        float value = 0.0;
 
-    // Calculate shared memory dimensions
-    const int sharedInputWidth = blockDim.x + kernelWidth - 1;
-    const int sharedInputHeight = blockDim.y + kernelHeight - 1;
-
-    // Pointers to shared memory
-    int8_t* sharedInput = sharedMemory;
-    int8_t* sharedKernel = sharedMemory + sharedInputWidth * sharedInputHeight;
-
-    // Load input elements into shared memory
-    for (int i = ty; i < sharedInputHeight; i += blockDim.y) {
-        for (int j = tx; j < sharedInputWidth; j += blockDim.x) {
-            int inputX = blockIdx.x * blockDim.x + j - padding;
-            int inputY = blockIdx.y * blockDim.y + i - padding;
-
-            if (inputX >= 0 && inputX < inputWidth && inputY >= 0 && inputY < inputHeight) {
-                sharedInput[i * sharedInputWidth + j] = input[inputY * inputWidth + inputX];
-            } else {
-                sharedInput[i * sharedInputWidth + j] = 0;
-            }
-        }
-    }
-
-    // Load kernel elements into shared memory
-    for (int i = ty; i < kernelHeight; i += blockDim.y) {
-        for (int j = tx; j < kernelWidth; j += blockDim.x) {
-            sharedKernel[i * kernelWidth + j] = kernel[i * kernelWidth + j];
-        }
-    }
-
-    __syncthreads();
-
-    // Ensure threads within block are within output bounds
-    if (x < outputWidth && y < outputHeight) {
-        int32_t sum = 0;
-
-        // Perform convolution using loop unrolling
-        for (int i = 0; i < kernelHeight; i++) {
-            #pragma unroll
-            for (int j = 0; j < kernelWidth; j++) {
-                int inputX = tx + j;
-                int inputY = ty + i;
-
-                sum += static_cast<int32_t>(sharedInput[inputY * sharedInputWidth + inputX]) *
-                       static_cast<int32_t>(sharedKernel[i * kernelWidth + j]);
+        for (int k_row = 0; k_row < kernel_height; ++k_row) {
+            for (int k_col = 0; k_col < kernel_width; ++k_col) {
+                int input_row = row + k_row;
+                int input_col = col + k_col;
+                int input_idx = ((batch_idx * channel_in + in_c) * height + input_row) * width + input_col;
+                int kernel_idx = ((out_c * channel_in + in_c) * kernel_height + k_row) * kernel_width + k_col;
+                value += input[input_idx] * kernel[kernel_idx];
             }
         }
 
-        output[y * outputWidth + x] = sum;
+        int output_idx = ((batch_idx * channel_out + out_c) * out_height + row) * out_width + col;
+        output[output_idx] = value;
     }
 }
 
+void conv2d(torch::Tensor input, torch::Tensor kernel, torch::Tensor output, 
+            int batch_size, int channel_in, int width, int height, 
+            int channel_out, int kernel_width, int kernel_height) {
+    dim3 threads(32, 32);
+    dim3 blocks(channel_in, channel_out, batch_size);
 
-
-
-void conv2d(const torch::Tensor& input, const torch::Tensor& kernel, torch::Tensor& output, int stride, int padding) {
-    const int inputWidth = input.size(1);
-    const int inputHeight = input.size(0);
-    const int kernelWidth = kernel.size(1);
-    const int kernelHeight = kernel.size(0);
-
-    const int outputWidth = (inputWidth + 2 * padding - kernelWidth) / stride + 1;
-    const int outputHeight = (inputHeight + 2 * padding - kernelHeight) / stride + 1;
-
-    output.resize_({outputHeight, outputWidth});
-
-    const dim3 blockSize(32, 32);
-    const dim3 gridSize((outputWidth + blockSize.x - 1) / blockSize.x, (outputHeight + blockSize.y - 1) / blockSize.y);
-    size_t sharedMemorySize = (blockSize.x + kernelWidth - 1) * (blockSize.y + kernelHeight - 1) * sizeof(int8_t) +
-                              kernelWidth * kernelHeight * sizeof(int8_t);
-
-    convolution2DKernel<<<gridSize, blockSize, sharedMemorySize>>>(
-        input.data_ptr<int8_t>(),
-        kernel.data_ptr<int8_t>(),
-        output.data_ptr<int32_t>(),
-        inputWidth, inputHeight,
-        kernelWidth, kernelHeight,
-        stride, padding
-    );
-
-    cudaDeviceSynchronize();
+    conv2d_kernel<<<blocks, threads>>>(input.data_ptr<float>(), kernel.data_ptr<float>(), output.data_ptr<float>(), 
+                                       batch_size, channel_in, width, height, 
+                                       channel_out, kernel_width, kernel_height);
 }
 
-// Python binding code
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("conv2d", &conv2d, "2D Convolution with CUDA");
+    m.def("conv2d", &conv2d, "2D Convolution");
 }
