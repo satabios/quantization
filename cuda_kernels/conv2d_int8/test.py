@@ -8,59 +8,65 @@ os.environ['TORCH_CUDA_ARCH_LIST'] = '8.0;8.6'
 os.environ['MAX_JOBS'] = '12'
 
 # Load CUDA kernel
-conv2d_cuda = load(name='conv2d', sources=['conv2d_w8a8.cu'])
+conv2d_cuda = load(name='conv2d_int8', sources=['conv2d_w8a8.cu'])
 
 # Define input parameters
-batch_size = 16
-channel_in = 3
-width = 32
-height = 32
-channel_out = 8
+batch_size = 16  # Use smaller batch size for easier debugging
+channel_in = 3  # Use single channel for easier debugging
+width = 5
+height = 5
+channel_out = 4  # Use single output channel for easier debugging
 kernel_width = 3
 kernel_height = 3
+stride = 1
+padding = 0
 
+dtype = torch.int8
 # Create random input and kernel
-input_tensor = torch.rand(batch_size, channel_in, width, height, device='cuda')
-kernel_tensor = torch.rand(channel_out, channel_in, kernel_width, kernel_height, device='cuda')
+input_tensor = torch.randint(0, 7, (batch_size, channel_in, width, height), device='cuda', dtype=dtype)
+kernel_tensor = torch.randint(0, 7, (channel_out, channel_in, kernel_width, kernel_height), device='cuda', dtype=dtype)
 
 # Compute output dimensions
-out_width = width - kernel_width + 1
-out_height = height - kernel_height + 1
+out_width = (width + 2 * padding - kernel_width) // stride + 1
+out_height = (height + 2 * padding - kernel_height) // stride + 1
 
 # Allocate output tensor
-output_tensor = torch.zeros(batch_size, channel_out, out_height, out_width, device='cuda')
+output_tensor = torch.zeros(batch_size, channel_out, out_height, out_width, device='cuda', dtype=torch.int32)
 
 start_event = torch.cuda.Event(enable_timing=True)
 end_event = torch.cuda.Event(enable_timing=True)
 
-# Run CUDA kernel
-start_event.record()
-conv2d_cuda.conv2d(input_tensor, kernel_tensor, output_tensor, 
-                   batch_size, channel_in, width, height, 
-                   channel_out, kernel_width, kernel_height)
-end_event.record()
+num_iterations = 100
+custom_conv_times = []
+torch_conv_times = []
 
-# Wait for the events to be recorded
-torch.cuda.synchronize()
-custom_conv_time = start_event.elapsed_time(end_event)
+for _ in range(num_iterations):
+    # Run CUDA kernel
+    start_event.record()
+    conv2d_cuda.conv2d_int8(input_tensor, kernel_tensor, output_tensor, stride, padding)
+    end_event.record()
+
+    # Wait for the events to be recorded
+    torch.cuda.synchronize()
+    custom_conv_times.append(start_event.elapsed_time(end_event))
 
 # PyTorch's conv2d for comparison
-input_tensor_pt = input_tensor.detach().clone()
-kernel_tensor_pt = kernel_tensor.detach().clone()
+input_tensor_pt = input_tensor.to(torch.float32)
+kernel_tensor_pt = kernel_tensor.to(torch.float32)
 
-start_event.record()
-output_tensor_pt = F.conv2d(input_tensor_pt, kernel_tensor_pt)
-end_event.record()
+for _ in range(num_iterations):
+    start_event.record()
+    output_tensor_pt = F.conv2d(input_tensor_pt, kernel_tensor_pt, stride=stride, padding=padding)
+    end_event.record()
 
-# Wait for the events to be recorded
-torch.cuda.synchronize()
-torch_conv_time = start_event.elapsed_time(end_event)
+    # Wait for the events to be recorded
+    torch.cuda.synchronize()
+    torch_conv_times.append(start_event.elapsed_time(end_event))
 
-# Compare the outputs
-print('CUDA Output:', output_tensor)
-print('PyTorch Output:', output_tensor_pt)
-print('Outputs match:', torch.allclose(output_tensor, output_tensor_pt))
+# Calculate average times
+average_custom_conv_time = np.mean(custom_conv_times)
+average_torch_conv_time = np.mean(torch_conv_times)
 
-
-print(f"Custom 2D convolution time: {custom_conv_time:.3f} ms")
-print(f"PyTorch F.conv2d time: {torch_conv_time:.3f} ms")
+print('Outputs match:', torch.allclose(output_tensor.to(torch.float32), output_tensor_pt, atol=1e-2))
+print(f"Average custom 2D convolution time over {num_iterations} iterations: {average_custom_conv_time:.3f} ms")
+print(f"Average PyTorch F.conv2d time over {num_iterations} iterations: {average_torch_conv_time:.3f} ms")
