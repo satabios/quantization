@@ -19,10 +19,10 @@ print(model)
 
 for layer_name, layer_type in zip(mapped_layers['name_list'], mapped_layers['type_list']):
     if(layer_type=='Conv2d' or layer_type=='Linear'):
-         setattr(eval('.'.join(layer_name.split('.')[:-1])),layer_name.split('.')[-1],W8A8.from_float(eval(layer_name)))
+         setattr(eval('.'.join(layer_name.split('.')[:-1])),layer_name.split('.')[-1],W8A8.from_float(eval(layer_name), act_quant='per_tensor'))
 
 print(model)
 
-test = torch.rand(512,3,32,32)#.dtype(torch.int8)
+test = torch.rand(512,3,32,32)#.type(torch.int8)
 out = model(test)
 print(out)

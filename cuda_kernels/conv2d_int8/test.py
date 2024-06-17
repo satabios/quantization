@@ -11,10 +11,10 @@ os.environ['MAX_JOBS'] = '12'
 conv2d_cuda = load(name='conv2d_int8', sources=['conv2d_w8a8.cu'])
 
 # Define input parameters
-batch_size = 16  # Use smaller batch size for easier debugging
+batch_size = 32  # Use smaller batch size for easier debugging
 channel_in = 3  # Use single channel for easier debugging
-width = 5
-height = 5
+width = 512
+height = 512
 channel_out = 4  # Use single output channel for easier debugging
 kernel_width = 3
 kernel_height = 3
@@ -40,10 +40,15 @@ num_iterations = 100
 custom_conv_times = []
 torch_conv_times = []
 
+
+
+
+conv2d_int8_implementation = torch.compile(conv2d_cuda.conv2d_int8, backend="inductor")
+
 for _ in range(num_iterations):
     # Run CUDA kernel
     start_event.record()
-    conv2d_cuda.conv2d_int8(input_tensor, kernel_tensor, output_tensor, stride, padding)
+    conv2d_int8_implementation(input_tensor, kernel_tensor, output_tensor, stride, padding)
     end_event.record()
 
     # Wait for the events to be recorded
@@ -66,7 +71,10 @@ for _ in range(num_iterations):
 # Calculate average times
 average_custom_conv_time = np.mean(custom_conv_times)
 average_torch_conv_time = np.mean(torch_conv_times)
-
+# print(output_tensor, output_tensor_pt)
 print('Outputs match:', torch.allclose(output_tensor.to(torch.float32), output_tensor_pt, atol=1e-2))
 print(f"Average custom 2D convolution time over {num_iterations} iterations: {average_custom_conv_time:.3f} ms")
 print(f"Average PyTorch F.conv2d time over {num_iterations} iterations: {average_torch_conv_time:.3f} ms")
+
+torch.clear_autocast_cache()
+torch.cuda.empty_cache()

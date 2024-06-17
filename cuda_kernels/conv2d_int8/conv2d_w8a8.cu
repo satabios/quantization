@@ -3,13 +3,88 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 
-__global__ void conv2d_kernel_int8(const int8_t* __restrict__ input, const int8_t* __restrict__ kernel, int32_t* __restrict__ output,
-                                   int inputWidth, int inputHeight,
-                                   int kernelWidth, int kernelHeight,
-                                   int stride, int padding,
-                                   int outputWidth, int outputHeight,
-                                   int channel_in, int channel_out,
-                                   int batch_size) {
+// __global__ void conv2d_kernel_int8(const int8_t* __restrict__ input, const int8_t* __restrict__ kernel, int32_t* __restrict__ output,
+//                                    int inputWidth, int inputHeight,
+//                                    int kernelWidth, int kernelHeight,
+//                                    int stride, int padding,
+//                                    int outputWidth, int outputHeight,
+//                                    int channel_in, int channel_out,
+//                                    int batch_size) {
+//     extern __shared__ int8_t sharedMemory[];
+
+//     const int tx = threadIdx.x;
+//     const int ty = threadIdx.y;
+//     const int tz = threadIdx.z;
+
+//     const int x = blockIdx.x * blockDim.x + tx;
+//     const int y = blockIdx.y * blockDim.y + ty;
+//     const int out_c = blockIdx.z % channel_out;
+//     const int b = blockIdx.z / channel_out;
+
+//     const int sharedInputWidth = blockDim.x + kernelWidth - 1;
+//     const int sharedInputHeight = blockDim.y + kernelHeight - 1;
+
+//     int8_t* sharedInput = sharedMemory;
+//     int8_t* sharedKernel = sharedMemory + sharedInputWidth * sharedInputHeight * channel_in;
+
+//     // Load input into shared memory
+//     for (int c = 0; c < channel_in; ++c) {
+//         for (int i = ty; i < sharedInputHeight; i += blockDim.y) {
+//             for (int j = tx; j < sharedInputWidth; j += blockDim.x) {
+//                 int inputX = blockIdx.x * blockDim.x + j - padding;
+//                 int inputY = blockIdx.y * blockDim.y + i - padding;
+
+//                 if (inputX >= 0 && inputX < inputWidth && inputY >= 0 && inputY < inputHeight) {
+//                     sharedInput[(c * sharedInputHeight + i) * sharedInputWidth + j] = __ldg(&input[((b * channel_in + c) * inputHeight + inputY) * inputWidth + inputX]);
+//                 } else {
+//                     sharedInput[(c * sharedInputHeight + i) * sharedInputWidth + j] = 0;
+//                 }
+//             }
+//         }
+//     }
+
+//     // Load kernel into shared memory
+//     for (int i = ty; i < kernelHeight; i += blockDim.y) {
+//         for (int j = tx; j < kernelWidth; j += blockDim.x) {
+//             for (int c = 0; c < channel_in; ++c) {
+//                 sharedKernel[(c * kernelHeight + i) * kernelWidth + j] = __ldg(&kernel[((out_c * channel_in + c) * kernelHeight + i) * kernelWidth + j]);
+//             }
+//         }
+//     }
+
+//     __syncthreads();
+
+//     if (x < outputWidth && y < outputHeight) {
+//         int32_t sum = 0;
+
+//         for (int c = 0; c < channel_in; ++c) {
+//             for (int i = 0; i < kernelHeight; i++) {
+//                 #pragma unroll
+//                 for (int j = 0; j < kernelWidth; j++) {
+//                     int inputX = tx + j;
+//                     int inputY = ty + i;
+
+//                     sum += static_cast<int32_t>(sharedInput[(c * sharedInputHeight + inputY) * sharedInputWidth + inputX]) *
+//                            static_cast<int32_t>(sharedKernel[(c * kernelHeight + i) * kernelWidth + j]);
+//                 }
+//             }
+//         }
+
+//         output[((b * channel_out + out_c) * outputHeight + y) * outputWidth + x] = sum;
+//     }
+// }
+
+__global__ void conv2d_kernel_int8(
+    const int8_t* __restrict__ input,
+    const int8_t* __restrict__ kernel,
+    int32_t* __restrict__ output,
+    int inputWidth, int inputHeight,
+    int kernelWidth, int kernelHeight,
+    int stride, int padding,
+    int outputWidth, int outputHeight,
+    int inChannels, int outChannels,
+    int batchSize) {
+
     extern __shared__ int8_t sharedMemory[];
 
     const int tx = threadIdx.x;
@@ -18,24 +93,24 @@ __global__ void conv2d_kernel_int8(const int8_t* __restrict__ input, const int8_
 
     const int x = blockIdx.x * blockDim.x + tx;
     const int y = blockIdx.y * blockDim.y + ty;
-    const int out_c = blockIdx.z % channel_out;
-    const int b = blockIdx.z / channel_out;
+    const int out_c = blockIdx.z % outChannels;
+    const int b = blockIdx.z / outChannels;
 
     const int sharedInputWidth = blockDim.x + kernelWidth - 1;
     const int sharedInputHeight = blockDim.y + kernelHeight - 1;
 
     int8_t* sharedInput = sharedMemory;
-    int8_t* sharedKernel = sharedMemory + sharedInputWidth * sharedInputHeight * channel_in;
+    int8_t* sharedKernel = sharedMemory + sharedInputWidth * sharedInputHeight * inChannels;
 
     // Load input into shared memory
-    for (int c = 0; c < channel_in; ++c) {
+    for (int c = 0; c < inChannels; ++c) {
         for (int i = ty; i < sharedInputHeight; i += blockDim.y) {
             for (int j = tx; j < sharedInputWidth; j += blockDim.x) {
                 int inputX = blockIdx.x * blockDim.x + j - padding;
                 int inputY = blockIdx.y * blockDim.y + i - padding;
 
                 if (inputX >= 0 && inputX < inputWidth && inputY >= 0 && inputY < inputHeight) {
-                    sharedInput[(c * sharedInputHeight + i) * sharedInputWidth + j] = __ldg(&input[((b * channel_in + c) * inputHeight + inputY) * inputWidth + inputX]);
+                    sharedInput[(c * sharedInputHeight + i) * sharedInputWidth + j] = input[((b * inChannels + c) * inputHeight + inputY) * inputWidth + inputX];
                 } else {
                     sharedInput[(c * sharedInputHeight + i) * sharedInputWidth + j] = 0;
                 }
@@ -46,8 +121,8 @@ __global__ void conv2d_kernel_int8(const int8_t* __restrict__ input, const int8_
     // Load kernel into shared memory
     for (int i = ty; i < kernelHeight; i += blockDim.y) {
         for (int j = tx; j < kernelWidth; j += blockDim.x) {
-            for (int c = 0; c < channel_in; ++c) {
-                sharedKernel[(c * kernelHeight + i) * kernelWidth + j] = __ldg(&kernel[((out_c * channel_in + c) * kernelHeight + i) * kernelWidth + j]);
+            for (int c = 0; c < inChannels; ++c) {
+                sharedKernel[(c * kernelHeight + i) * kernelWidth + j] = kernel[((out_c * inChannels + c) * kernelHeight + i) * kernelWidth + j];
             }
         }
     }
@@ -57,9 +132,8 @@ __global__ void conv2d_kernel_int8(const int8_t* __restrict__ input, const int8_
     if (x < outputWidth && y < outputHeight) {
         int32_t sum = 0;
 
-        for (int c = 0; c < channel_in; ++c) {
+        for (int c = 0; c < inChannels; ++c) {
             for (int i = 0; i < kernelHeight; i++) {
-                #pragma unroll
                 for (int j = 0; j < kernelWidth; j++) {
                     int inputX = tx + j;
                     int inputY = ty + i;
@@ -70,9 +144,10 @@ __global__ void conv2d_kernel_int8(const int8_t* __restrict__ input, const int8_
             }
         }
 
-        output[((b * channel_out + out_c) * outputHeight + y) * outputWidth + x] = sum;
+        output[((b * outChannels + out_c) * outputHeight + y) * outputWidth + x] = sum;
     }
 }
+
 
 void conv2d_int8(torch::Tensor input, torch::Tensor kernel, torch::Tensor output, 
                  int stride, int padding) {
