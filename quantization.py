@@ -24,10 +24,12 @@ class Quantizer(nn.Module):
         self.compute_scale_zero_pointer()
 
     def compute_scales(self,tensor):
-        self.max_val = tensor.abs().max().item()
+
         if(self.symentric):
+            self.max_val = tensor.abs().max().item()
             scales = self.max_val/self.q_max
         else:
+            self.max_val = tensor.max().item()
             self.min_val = tensor.min().item()
             scales = (self.max_val - self.min_val) / (self.q_max - self.q_min)
         return scales
@@ -80,7 +82,11 @@ class Quantizer(nn.Module):
                                                 )
                                             )
             else:
-     
+                # if(self.zero_point.dim()>1):
+                #     zmin_val = torch.min(self.zero_point)
+                #     zmax_val = torch.max(self.zero_point)
+                #
+                # else:
                 if self.zero_point < self.q_min:
                     self.zero_point = self.q_min
                 elif self.zero_point > self.q_max:
@@ -93,7 +99,10 @@ class Quantizer(nn.Module):
     def quantize(self):
         tensor = self.tensor.clone()
         self.q_min = torch.iinfo(self.dtype).min
-        self.quantized_tensor = torch.round(tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
+        if(self.symentric==False):
+            self.quantized_tensor = torch.round(tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
+        else:
+            self.quantized_tensor = torch.round(tensor / self.scales).clamp(self.q_min, self.q_max)
         return self.quantized_tensor.type(self.dtype)
     def dequantize(self, quantized_tensor):
         self.dequantized_tensor = self.scales * (quantized_tensor.float() - self.zero_point)
