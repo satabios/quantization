@@ -7,10 +7,11 @@ import seaborn as sns
 
 class Quantizer:
     def __init__(self, tensor, dtype, w_a=None, per='tensor',per_dim=None, group_size=-1, symentric=False):
+
         self.tensor = tensor
         self.symentric = symentric
         self.dtype = dtype
-        # Symmetric or Asymmetric
+     
         if(self.dtype == torch.bfloat16):
             self.q_min = torch.finfo(self.dtype).min
             self.q_max = torch.finfo(self.dtype).max
@@ -24,6 +25,7 @@ class Quantizer:
         self.w_a = w_a
         self.q_group_size = group_size
         self.tensor_shape = self.tensor.shape
+
         # Per - Channel or Row or Column or Group
         self.per = per  # Wise --> Tensor, Channel, Group
         self.per_dim = per_dim
@@ -84,15 +86,19 @@ class Quantizer:
             self.q_min = torch.finfo(self.dtype).min
         else:
             self.q_min = torch.iinfo(self.dtype).min
+
+        if(self.per == 'group'):
+            original_tensor_shape = tensor.shape
+            tensor = tensor.clone().view(tensor.shape[0] * (tensor.shape[1] // self.q_group_size), -1) #Only for Linear Layer
+
         if(self.symentric):
             self.quantized_tensor = torch.round(tensor / self.scales).clamp(self.q_min, self.q_max)
-        else:
-            if(self.per == 'group'):
-                tensor_reshaped = tensor.clone().view(tensor.shape[0] * (tensor.shape[1] // self.q_group_size), -1) #Only for Linear Layer
-                self.quantized_tensor = torch.round(tensor_reshaped / self.scales + self.zero_point).clamp(self.q_min, self.q_max).view(tensor.shape)
 
-            else:
-                self.quantized_tensor = torch.round(tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
+        else:
+            self.quantized_tensor = torch.round(tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
+        
+        if(self.per == 'group'):
+            self.quantized_tensor = self.quantized_tensor.view(original_tensor_shape)
 
         return self.quantized_tensor.type(self.dtype)
     def dequantize(self, quantized_tensor):
