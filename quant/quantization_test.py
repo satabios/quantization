@@ -7,38 +7,38 @@ from quantization import Quantizer
 #
 # ###################################### L2###############################################################
 
-# Symentric Quantization
-print("Symentric Quantization")
-original_tensor = torch.tensor([[191.6, -13.5, 728.6],
-                                [92.14, 295.5,  -184],
-                                [0,     684.6, 245.5]])
-
-
-quantizer = Quantizer(tensor=original_tensor, dtype=torch.int8, symentric=True)
-print(original_tensor)
-quantized_tensor = quantizer.quantize()
-print(quantized_tensor)
-dequantized_tensor = quantizer.dequantize(quantized_tensor)
-print(dequantized_tensor)
-print("MSE:", (dequantized_tensor - original_tensor).square().mean())
-print("Scale:", quantizer.scales, "Zero:", quantizer.zero_point)
-
-# Affie/ASymentric Quantization
-print("Asymentric Quantization")
-
-original_tensor = torch.tensor([[191.6, -13.5, 728.6],
-                                [92.14, 295.5,  -184],
-                                [0,     684.6, 245.5]])
-
-
-quantizer = Quantizer(tensor=original_tensor, dtype=torch.int8)
-print(original_tensor)
-quantized_tensor = quantizer.quantize()
-print(quantized_tensor)
-dequantized_tensor = quantizer.dequantize(quantized_tensor)
-print(dequantized_tensor)
-print("MSE:", (dequantized_tensor - original_tensor).square().mean())
-print("Scale:", quantizer.scales, "Zero:", quantizer.zero_point)
+# # Symentric Quantization
+# print("Symentric Quantization")
+# original_tensor = torch.tensor([[191.6, -13.5, 728.6],
+#                                 [92.14, 295.5,  -184],
+#                                 [0,     684.6, 245.5]])
+#
+#
+# quantizer = Quantizer(tensor=original_tensor, dtype=torch.int8, symentric=True)
+# print(original_tensor)
+# quantized_tensor = quantizer.quantize()
+# print(quantized_tensor)
+# dequantized_tensor = quantizer.dequantize(quantized_tensor)
+# print(dequantized_tensor)
+# print("MSE:", (dequantized_tensor - original_tensor).square().mean())
+# print("Scale:", quantizer.scales, "Zero:", quantizer.zero_point)
+#
+# # Affie/ASymentric Quantization
+# print("Asymentric Quantization")
+#
+# original_tensor = torch.tensor([[191.6, -13.5, 728.6],
+#                                 [92.14, 295.5,  -184],
+#                                 [0,     684.6, 245.5]])
+#
+#
+# quantizer = Quantizer(tensor=original_tensor, dtype=torch.int8)
+# print(original_tensor)
+# quantized_tensor = quantizer.quantize()
+# print(quantized_tensor)
+# dequantized_tensor = quantizer.dequantize(quantized_tensor)
+# print(dequantized_tensor)
+# print("MSE:", (dequantized_tensor - original_tensor).square().mean())
+# print("Scale:", quantizer.scales, "Zero:", quantizer.zero_point)
 
 #
 #
@@ -98,3 +98,48 @@ print("Scale:", quantizer.scales, "Zero:", quantizer.zero_point)
 # # print(dequantized_tensor)
 # # print("MSE:", (dequantized_tensor - test_tensor).square().mean())
 # # print("Scale:", quantizer.scales, "Zero:", quantizer.zero_point)
+########################################## CNN ############################################
+
+original_tensor = torch.randn(8, 3, 32, 32)
+dtype=torch.int8
+quantizer = Quantizer(tensor=original_tensor, per='dim', per_dim=0, dtype=dtype, symentric=False) # Channel wise
+# print(original_tensor)
+quantized_tensor = quantizer.quantize()
+# print(quantized_tensor)
+dequantized_tensor = quantizer.dequantize(quantized_tensor)
+# print(dequantized_tensor)
+print("MSE:", (dequantized_tensor - original_tensor).square().mean())
+print("Scale:", quantizer.scales.shape, "Zero:", quantizer.zero_point.shape)
+print("MSE:", quantizer.compute_dequantization_error(original_tensor, quantized_tensor))
+
+
+quantizer = Quantizer(tensor=original_tensor, per='dim', per_dim=0, dtype=dtype, symentric=True) # Channel wise
+# print(original_tensor)
+quantized_tensor = quantizer.quantize()
+# print(quantized_tensor)
+dequantized_tensor = quantizer.dequantize(quantized_tensor)
+# print(dequantized_tensor)
+print("MSE:", (dequantized_tensor - original_tensor).square().mean())
+print("Scale:", quantizer.scales.shape, "Zero:", quantizer.zero_point.shape)
+print("MSE:", quantizer.compute_dequantization_error(original_tensor, quantized_tensor))
+
+quantizer = Quantizer(tensor=original_tensor, dtype=dtype, symentric=True) # Channel wise
+# print(original_tensor)
+quantized_tensor = quantizer.quantize()
+# print(quantized_tensor)
+dequantized_tensor = quantizer.dequantize(quantized_tensor)
+# print(dequantized_tensor)
+print("MSE:", (dequantized_tensor - original_tensor).square().mean())
+print("Scale:", quantizer.scales, "Zero:", quantizer.zero_point)
+print("MSE:", quantizer.compute_dequantization_error(original_tensor, quantized_tensor))
+
+
+quantizer = Quantizer(tensor=original_tensor, dtype=dtype, symentric=False) # Channel wise
+# print(original_tensor)
+quantized_tensor = quantizer.quantize()
+# print(quantized_tensor)
+dequantized_tensor = quantizer.dequantize(quantized_tensor)
+# print(dequantized_tensor)
+print("MSE:", (dequantized_tensor - original_tensor).square().mean())
+print("Scale:", quantizer.scales, "Zero:", quantizer.zero_point)
+print("MSE:", quantizer.compute_dequantization_error(original_tensor, quantized_tensor))
