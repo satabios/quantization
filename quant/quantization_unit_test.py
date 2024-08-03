@@ -1,5 +1,3 @@
-# import unittest
-# import torch
 from quantization import Quantizer
 import unittest
 import torch
@@ -9,7 +7,7 @@ import torch.nn.functional as F
 class TestQuantizer(unittest.TestCase):
 
     def setUp(self):
-        self.array_size = (2048*2, 2048*4)
+        self.array_size = (1024, 2048)
         self.dtype = torch.int8
 
     def test_per_tensor_symmetric(self):
@@ -48,6 +46,14 @@ class TestQuantizer(unittest.TestCase):
     def test_per_group_asymmetric(self):
         tensor = torch.randn(self.array_size)
         quantizer = Quantizer(tensor, self.dtype, symentric=False, per='group', group_size=4)
+        quantized_tensor = quantizer.quantize()
+        dequantized_tensor = quantizer.dequantize(quantized_tensor)
+        mse = F.mse_loss(tensor, dequantized_tensor)
+        self.assertLess(mse.item(), 0.1)
+    
+    def test_per_group_symmetric(self):
+        tensor = torch.randn(self.array_size)
+        quantizer = Quantizer(tensor, self.dtype, symentric=True, per='group', group_size=4)
         quantized_tensor = quantizer.quantize()
         dequantized_tensor = quantizer.dequantize(quantized_tensor)
         mse = F.mse_loss(tensor, dequantized_tensor)

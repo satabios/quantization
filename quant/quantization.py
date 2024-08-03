@@ -84,15 +84,18 @@ class Quantizer:
             self.q_min = torch.finfo(self.dtype).min
         else:
             self.q_min = torch.iinfo(self.dtype).min
+        
+        if(self.per == 'group'):
+            orig_tensor_shape = tensor.shape
+            tensor = tensor.clone().view(tensor.shape[0] * (tensor.shape[1] // self.q_group_size), -1) #Only for Linear Layer
+
         if(self.symentric):
             self.quantized_tensor = torch.round(tensor / self.scales).clamp(self.q_min, self.q_max)
         else:
-            if(self.per == 'group'):
-                tensor_reshaped = tensor.clone().view(tensor.shape[0] * (tensor.shape[1] // self.q_group_size), -1) #Only for Linear Layer
-                self.quantized_tensor = torch.round(tensor_reshaped / self.scales + self.zero_point).clamp(self.q_min, self.q_max).view(tensor.shape)
+            self.quantized_tensor = torch.round(tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
 
-            else:
-                self.quantized_tensor = torch.round(tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
+        if(self.per == 'group'):
+            self.quantized_tensor = self.quantized_tensor.view(orig_tensor_shape)
 
         return self.quantized_tensor.type(self.dtype)
     def dequantize(self, quantized_tensor):
