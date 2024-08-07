@@ -5,13 +5,15 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import seaborn as sns
 
-class Quantizer:
-    def __init__(self, tensor, dtype, w_a=None, per='tensor',per_dim=None, group_size=-1, symentric=False):
-        self.tensor = tensor
+class Quantizer:   #currently supporting int8 and bfloat16
+    def __init__(self, dtype, w_a=None, per='tensor',per_dim=None, group_size=-1, symentric=False):
+        # self.tensor = tensor
+        # self.tensor_shape = self.tensor.shape
+
         self.symentric = symentric
         self.dtype = dtype
         # Symmetric or Asymmetric
-        if(self.dtype == torch.bfloat16):
+        if(self.dtype == torch.bfloat16 or self.dtype == torch.float32 or self.dtype == torch.float64 or self.dtype == torch.float16):
             self.q_min = torch.finfo(self.dtype).min
             self.q_max = torch.finfo(self.dtype).max
         else:
@@ -23,13 +25,14 @@ class Quantizer:
 
         self.w_a = w_a
         self.q_group_size = group_size
-        self.tensor_shape = self.tensor.shape
+
         # Per - Channel or Row or Column or Group
         self.per = per  # Wise --> Tensor, Channel, Group
         self.per_dim = per_dim
 
-        self.compute_scale_zero_pointer()
 
+
+    @torch.no_grad()
     def compute_scales_zero_point(self,tensor):
 
         if(self.symentric):
@@ -47,6 +50,7 @@ class Quantizer:
 
         return scales, zero_point
 
+    @torch.no_grad()
     def compute_scales_zero_point_dimension(self, tensor, dim=-1):
 
         if(dim>=0): # Channel-Wise, Group-Wise
@@ -77,14 +81,14 @@ class Quantizer:
             tensor = self.tensor.view(-1, self.q_group_size)
             self.compute_scales_zero_point_dimension(tensor, dim=0)
 
-    def quantize(self):
+    def quantize(self, tensor):
 
-        tensor = self.tensor.clone()
-        if (self.dtype == torch.bfloat16):
-            self.q_min = torch.finfo(self.dtype).min
-        else:
-            self.q_min = torch.iinfo(self.dtype).min
-        
+        self.tensor = tensor
+        self.tensor_shape = self.tensor.shape
+        self.compute_scale_zero_pointer()
+
+        tensor = self.tensor.detach().clone()
+
         if(self.per == 'group'):
             orig_tensor_shape = tensor.shape
             tensor = tensor.clone().view(tensor.shape[0] * (tensor.shape[1] // self.q_group_size), -1) #Only for Linear Layer
@@ -98,6 +102,8 @@ class Quantizer:
             self.quantized_tensor = self.quantized_tensor.view(orig_tensor_shape)
 
         return self.quantized_tensor.type(self.dtype)
+
+    @torch.no_grad()
     def dequantize(self, quantized_tensor):
         if (self.per == 'group'):
             quantized_tensor_reshaped = quantized_tensor.clone().view(quantized_tensor.shape[0] * (quantized_tensor.shape[1] // self.q_group_size),
@@ -109,7 +115,22 @@ class Quantizer:
 
         return self.dequantized_tensor
 
+    @torch.no_grad()
     def compute_dequantization_error(self, original_tensor, dequantized_tensor):
+
+
+        if torch.isinf(original_tensor).any() or torch.isinf(dequantized_tensor).any():
+            print("Inf values detected")
+        if torch.isnan(original_tensor).any() or torch.isnan(dequantized_tensor).any():
+            print("NaN values detected")
+
+        # Normalizing tensors
+        dequantized_tensor = dequantized_tensor.to(torch.float32)
+
+        # Now perform the normalization
+        max_value = dequantized_tensor.abs().max()
+        if max_value > 0:  # Prevent division by zero
+            dequantized_tensor /= max_value
 
         return  F.mse_loss(original_tensor, dequantized_tensor)
         # return torch.allclose(original_tensor, dequantized_tensor, atol=1e2)
