@@ -1,7 +1,7 @@
-
 import torch
 import torch.nn as nn
 from collections import defaultdict, OrderedDict
+import torch.nn.functional as F
 
 class VGG(nn.Module):
   ARCH = [64, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M']
@@ -41,3 +41,36 @@ class VGG(nn.Module):
     # classifier: [N, 512] => [N, 10]
     x = self.classifier(x)
     return x
+
+
+
+
+class SimpleCNN(nn.Module):
+    def __init__(self):
+        super(SimpleCNN, self).__init__()
+        # First convolutional layer taking 3 input channels (image), 32 output channels, kernel size 3
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        # Batch normalization for the first convolutional layer
+        self.bn1 = nn.BatchNorm2d(32)
+        # Second convolutional layer, taking 32 input channels, 64 output channels, kernel size 3
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        # Batch normalization for the second convolutional layer
+        self.bn2 = nn.BatchNorm2d(64)
+        # Max pooling layer
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        # Fully connected layer taking 64*8*8 input features, 128 output features
+        self.fc1 = nn.Linear(64 * 8 * 8, 128)
+        # Batch normalization for the first fully connected layer
+        self.bn3 = nn.BatchNorm1d(128)
+        # Final fully connected layer producing 10 output features
+        self.fc2 = nn.Linear(128, 10)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.pool(F.relu(x))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1)
+        x = F.relu(self.fc1(x))
+        # Output layer
+        x = self.fc2(x)
+        return x
