@@ -3,6 +3,7 @@
 __pycache__/*
 # Except for python files
 !*.py
+.idea/*
 !cuda_kernels/
 !quant/data/*
 !quant/__pycache__/
