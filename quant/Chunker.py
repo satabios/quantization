@@ -1,8 +1,8 @@
 from models import SimpleCNN, VGG
 import torch
-from model_analyzer import ModelAnalyzer
+from ModelAnalyzer import ModelAnalyzer
 from Quantizer import Quantizer
-from fusion import fuse
+from Fusion import Fuse
 from dataset import dataloader
 
 class Chunker(ModelAnalyzer):
@@ -10,9 +10,10 @@ class Chunker(ModelAnalyzer):
         self.model = model
         self.calibiration_data = calibiration_data
         self.mapped_layers = ModelAnalyzer(self.model, self.calibiration_data).mapped_layers
-        self.quantized_model = self.chunker()
+        self.chunker()
 
     def analyze_quantization_potential(self, tensor):
+
         # Calculate basic statistics
         mean_val = tensor.mean()
         min_val = tensor.min()
@@ -37,7 +38,6 @@ class Chunker(ModelAnalyzer):
         return "asymmentric"
 
     def chunker(self):
-        model = self.model
 
         # Run through configs for each layer and compute the error!
         for layer_name, layer_data in self.mapped_layers['calibiration_data'].items():
@@ -61,21 +61,20 @@ class Chunker(ModelAnalyzer):
                                     'per_dim': None}
                         }
 
-            qlayer = Quantizer.from_float(module=eval(layer_name),
+            qlayer = Quantizer.from_float(module=eval('self.'+layer_name),
                                           activations=layer_data['activations'],
                                           data_metry=q_params
                                           )
-            setattr(eval('.'.join(layer_name.split('.')[:-1])), layer_name.split('.')[-1], qlayer)
-
-        return model
-
-
+            setattr(eval('self.'+'.'.join(layer_name.split('.')[:-1])), layer_name.split('.')[-1], qlayer)
 
 # model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
-model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2', pretrained=True)
+model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2')#, pretrained=True)
 # model = VGG()
+# model = SimpleCNN()
 test = torch.rand(1, 3, 128, 128)
 
-quanter = Chunker(model, dataloader['test'])
-print(quanter.quantized_model)
-out = quanter.quantized_model(test)
+fuser = Fuse(model.eval(), dataloader['test'])
+fused_model = fuser.fused_model.train()
+quantized_model = Chunker(fused_model, dataloader['test']).model
+
+print(quantized_model)

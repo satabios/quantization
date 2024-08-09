@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from model_analyzer import ModelAnalyzer
+from ModelAnalyzer import ModelAnalyzer
 import torch.nn as nn
 from activation_awareness import _search_module_scale, auto_clip_layer, get_weight_scale, get_act_scale, smq_scale
 import torch.optim as optim

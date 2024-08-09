@@ -1,19 +1,19 @@
 import torch
-from torchsummary import summary
-from model_analyzer import ModelAnalyzer
-from models import VGG
+from ModelAnalyzer import ModelAnalyzer
 import torch.ao.quantization.quantize_fx as quantize_fx
-class fuse(ModelAnalyzer):
 
-    def __init__(self, model):
+class Fuse(ModelAnalyzer):
+
+    def __init__(self, model, calibiration_data=None):
 
         self.model = model
         self.fused_model = None
+        self.calibiration_data = calibiration_data
         self.fuse_model()
 
     def fuse_model(self):
 
-        ma = ModelAnalyzer(self.model)
+        ma = ModelAnalyzer(self.model, self.calibiration_data)
         mapped_layers = ma.mapped_layers
         layer_name_type = [mapped_layers['name_list'],mapped_layers['type_list']]
         self.fused_model = self.fuse_layers(model =self.model, layer_name_type=layer_name_type)
@@ -73,16 +73,3 @@ class fuse(ModelAnalyzer):
             model_fused = quantize_fx.fuse_fx(model)
 
         return model_fused
-
-
-# Usage Script
-
-# resnet = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
-# mobilenet = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2', pretrained=True)
-# models = VGG()
-#
-# for model in [resnet, mobilenet, models]:
-#     model.eval()
-#     summary(model.to('cuda'), (3, 224, 224))
-#     fuser = fuse(model)
-#     summary(fuser.fused_model.to('cuda'), (3, 224, 224))
