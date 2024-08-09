@@ -30,8 +30,6 @@ class Quantizer:   #currently supporting int8 and bfloat16
         self.per = per  # Wise --> Tensor, Channel, Group
         self.per_dim = per_dim
 
-
-
     @torch.no_grad()
     def compute_scales_zero_point(self,tensor):
 

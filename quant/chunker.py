@@ -12,7 +12,7 @@ class Chunker(nn.Module):
             padding=None,
             dilation=None,
             groups=None,
-            bias=True,
+            bias=None,
             quantize_output=False,
             cnn=False,
             data_metry = {'weights': {'dtype': torch.int8, 'symmentry': False, 'per':"tensor"},
@@ -45,15 +45,9 @@ class Chunker(nn.Module):
                 requires_grad=False,
             ),
         )
-        if bias:
-            self.register_buffer(
-                "bias",
-                torch.zeros(
-                    (1, self.out_features),
-                    dtype=torch.float16,
-                    requires_grad=False
-                ),
-            )
+
+        if bias is not None:
+            self.bias = bias
         else:
             self.register_buffer("bias", None)
 
@@ -66,9 +60,9 @@ class Chunker(nn.Module):
                                      symentric= data_metry['weights']['symmentry'],
                                      per= data_metry['weights']['per'])
 
+        if(not quantize_output):
 
-
-        self.output_quant = Quantizer(dtype=data_metry['outputs']['dtype'],
+            self.output_quant = Quantizer(dtype=data_metry['outputs']['dtype'],
                                           symentric=data_metry['outputs']['symmentry'],
                                           per= data_metry['outputs']['per'])
 
@@ -86,33 +80,32 @@ class Chunker(nn.Module):
         # Activation Quantization
         q_x = self.activation_quant.quantize(x)
 
-
-        # Weights Quantization
-        if self.bias is not None:
-            self.bias = self.bias.to(self.weight.dtype)
-        else:
-            self.bias = None
-
         if (self.weight.dim() == 4):
-            y = torch.functional.F.conv2d(q_x,
-                                          self.weight,
-                                          self.bias,
-                                          self.stride,
-                                          self.padding,
-                                          self.dilation,
-                                          self.groups)
+            y = torch.functional.F.conv2d(input=q_x,
+                                          weight=self.weight,
+                                          stride=self.stride,
+                                          padding=self.padding,
+                                          dilation=self.dilation,
+                                          groups=self.groups)
         else:
-            y = torch.functional.F.linear(q_x,
-                                          self.weight,
-                                          self.bias)
+            y = torch.functional.F.linear(input=q_x,
+                                          weight=self.weight
+                                          )
+
+        # HANDLE THE BIAS!!! This would bump the output from the quantized dtype to the original dtype
+
+        if (self.bias is not None) or (self.bias is None and self.quantize_output is False):
+            if self.bias is None: # If not bias is found yet you want the output to be not quantized
+                self.bias = torch.zeros(y.shape[1])
+            y_index = y.shape.index(self.bias.shape[0])
+            reshaped_bias = self.bias.view([1 if i != y_index else self.bias.shape[0] for i in range(len(y.shape))])
+            y = y+reshaped_bias
 
         # Output Quantization
         if self.quantize_output:
             return self.output_quant.quantize(y)
         else:
-            return self.output_quant.dequantize(y)
-
-
+            return y
 
     @staticmethod
     def from_float(
@@ -126,9 +119,9 @@ class Chunker(nn.Module):
         # Weight per_channel/per_tensor quantization; Activation per_token/per_tensor quantization
         if (isinstance(module, torch.nn.Linear)):
             new_module = Chunker(
-                module.in_features,
-                module.out_features,
-                module.bias is not None,
+                in_features=module.in_features,
+                out_features=module.out_features,
+                bias=module.bias,
                 quantize_output=quantize_output,
                 data_metry = data_metry
 
@@ -136,25 +129,20 @@ class Chunker(nn.Module):
             )
         elif (isinstance(module, torch.nn.Conv2d)):
             new_module = Chunker(
-                module.in_channels,
-                module.out_channels,
-                module.kernel_size,
-                module.stride,
-                module.padding,
-                module.dilation,
-                module.groups,
-                module.bias is not None,
+                in_features=module.in_channels,
+                out_features=module.out_channels,
+                kernel_size=module.kernel_size,
+                stride=module.stride,
+                padding=module.padding,
+                dilation=module.dilation,
+                groups=module.groups,
+                bias=module.bias,
                 quantize_output=quantize_output,
                 cnn=True,
                 data_metry=data_metry
             )
 
-
         new_module.weight = new_module.weight_quant.quantize(module.weight)
-
-        if module.bias is not None:
-            new_module.bias = new_module.bias_quant.quantize(module.bias)
-
 
         return new_module
 

@@ -11,11 +11,11 @@ from fusion import fuse
 from dataset import dataloader
 
 
-model = VGG()
-checkpoint = torch.load('vgg.cifar.pretrained.pth',weights_only=False)
-model.load_state_dict(checkpoint)
-
-
+# model = VGG()
+# checkpoint = torch.load('vgg.cifar.pretrained.pth',weights_only=False)
+# model.load_state_dict(checkpoint)
+model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18').eval()
+# model = SimpleCNN()
 ma = ModelAnalyzer(model.train(),dataloader['test'])
 mapped_layers = ma.mapped_layers
 
@@ -34,8 +34,9 @@ for layer_name, layer_type in zip(mapped_layers['name_list'], mapped_layers['typ
 # test = torch.randint(0,255,(512,3,32,32))#.type(torch.int8)
 
 test = torch.rand(1, 3, 32, 32)
+print(f"Quantized Model: {model}")
 out = model(test)
-print(out)
+print(f"Output: {out}")
 
 #
 # image_size = 32
