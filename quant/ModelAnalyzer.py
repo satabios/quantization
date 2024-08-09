@@ -289,6 +289,11 @@ class ModelAnalyzer:
         for layer_name in name_list:
 
             layer = eval(layer_name)
+
+            # isinstance(model, torch.fx.GraphModule) If graphmodule replace the layer_named with _modules
+            # nn.Module: eval('model.features[0][0]')
+            # FX Module: eval('model.features._modules[\'0\']._modules[\'0\']')
+
             if (isinstance(layer, (nn.Conv2d, nn.Linear))):
 
                 layer_data =  {
