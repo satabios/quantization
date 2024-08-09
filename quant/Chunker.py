@@ -68,8 +68,8 @@ class Chunker(ModelAnalyzer):
             setattr(eval('.'.join(layer_name.split('.')[:-1])), layer_name.split('.')[-1], qlayer)
 
 # model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
-model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2')#, pretrained=True)
-# model = VGG()
+# model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2')#, pretrained=True)
+model = VGG()
 # model = SimpleCNN()
 test = torch.rand(1, 3, 128, 128)
 

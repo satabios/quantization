@@ -70,6 +70,8 @@ class ModelAnalyzer:
         return layers
 
     def reformat_layer_name(self, str_data):
+        def replace_pattern(match):
+            return f'._modules[\'{match.group(1)}\']'
         try:
             split_data = str_data.split('.')
             for ind in range(len(split_data)):
@@ -90,6 +92,13 @@ class ModelAnalyzer:
 
         except:
             pass
+
+        # isinstance(model, torch.fx.GraphModule) If graphmodule replace the layer_named with _modules
+        # nn.Module: eval('model.features[0][0]')
+        # FX Module: eval('model.features._modules[\'0\']._modules[\'0\']')
+        if(isinstance(self.model, torch.fx.GraphModule)):
+            str_data = re.sub(r'\[(\d+)\]', replace_pattern, str_data)
+            str_data = re.sub(r'\.{2,}', '.', str_data)
 
         return str_data
 
