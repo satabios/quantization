@@ -65,7 +65,7 @@ class Chunker(ModelAnalyzer):
                                           activations=layer_data['activations'],
                                           data_metry=q_params
                                           )
-            setattr(eval('self.'+'.'.join(layer_name.split('.')[:-1])), layer_name.split('.')[-1], qlayer)
+            setattr(eval('.'.join(layer_name.split('.')[:-1])), layer_name.split('.')[-1], qlayer)
 
 # model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
 model = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2')#, pretrained=True)
@@ -75,6 +75,7 @@ test = torch.rand(1, 3, 128, 128)
 
 fuser = Fuse(model.eval(), dataloader['test'])
 fused_model = fuser.fused_model.train()
+
 quantized_model = Chunker(fused_model, dataloader['test']).model
 
 print(quantized_model)
