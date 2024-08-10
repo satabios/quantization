@@ -93,6 +93,7 @@ class ModelAnalyzer:
         except:
             pass
 
+        # For torch.graphmodules, the layer names get prefixed with _modules with the index under a key, value of the module
         # isinstance(model, torch.fx.GraphModule) If graphmodule replace the layer_named with _modules
         # nn.Module: eval('model.features[0][0]')
         # FX Module: eval('model.features._modules[\'0\']._modules[\'0\']')
@@ -160,7 +161,6 @@ class ModelAnalyzer:
             input_size = [input_size]
 
         model_device = next(iter(model.parameters())).device
-        # x, _ = next(iter(self.dataloader['test']))
         x = x.to(model_device)
 
         summary = OrderedDict()
