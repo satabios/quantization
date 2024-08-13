@@ -1,11 +1,11 @@
-# Ignore __pycache__ directories
-__pycache__/
+# Ignore __pycache__ directories at any level
+**/__pycache__/
 
-# Ignore all data directories
-data/
+# Ignore all data directories at any level
+**/data/
 
-# Ignore .idea directory (for JetBrains IDEs)
-.idea/
+# Ignore .idea directory at any level (for JetBrains IDEs)
+**/.idea/
 
-# Ignore .vscode directory (for Visual Studio Code)
-.vscode/
+# Ignore .vscode directory at any level (for Visual Studio Code)
+**/.vscode/
