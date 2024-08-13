@@ -26,7 +26,9 @@ print("Prior Scaling:", sconces.evaluate())
 
 ma = ModelAnalyzer(model)
 mapped_layers = ma.mapped_layers
-layer_list = [idx for idx, l_n in enumerate(mapped_layers['catcher']['name_list']) if isinstance(eval(l_n), (nn.Conv2d,nn.Linear))]
+layer_list = [idx for idx, l_n in enumerate(mapped_layers['catcher']['name_list'])
+              if isinstance(eval(l_n), (nn.Conv2d,nn.Linear))]
+
 # Activation Aware Scaling
 final_scales = []
 with torch.no_grad():

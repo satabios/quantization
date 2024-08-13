@@ -4,12 +4,6 @@ import re
 import numpy as np
 from collections import OrderedDict
 
-
-import copy
-
-import copy
-
-
 class ModelAnalyzer:
     """
     model_layer: This key holds the layers of the model as per their original order.
