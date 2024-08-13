@@ -1,9 +1,11 @@
-# Ignore all files except .py files
-*
-__pycache__/*
-# Except for python files
-!*.py
-.idea/*
-!cuda_kernels/
-!quant/data/*
-!quant/__pycache__/
+# Ignore __pycache__ directories
+__pycache__/
+
+# Ignore all data directories
+data/
+
+# Ignore .idea directory (for JetBrains IDEs)
+.idea/
+
+# Ignore .vscode directory (for Visual Studio Code)
+.vscode/
