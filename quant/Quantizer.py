@@ -97,14 +97,11 @@ class Quantizer(nn.Module):
                                           weight=self.weight
                                           )
 
-        # HANDLE THE BIAS!!! This would bump the output from the quantized dtype to the original dtype
-
-        if (self.bias is not None) or (self.bias is None and self.quantize_output is False):
-            if self.bias is None: # If not bias is found yet you want the output to be not quantized
-                self.bias = torch.zeros(y.shape[1])
+        if (self.bias is not None):
             y_index = y.shape.index(self.bias.shape[0])
             reshaped_bias = self.bias.view([1 if i != y_index else self.bias.shape[0] for i in range(len(y.shape))])
             y = y+reshaped_bias
+
 
         # Output Quantization
         if self.quantize_output:
@@ -146,12 +143,18 @@ class Quantizer(nn.Module):
                 activations = activations
             )
 
-        new_module.weight = new_module.weight_quant.quantize(module.weight)
+        q_weight = new_module.weight_quant.quantize(module.weight)
+        # d_weight = new_module.weight_quant.dequantize(q_weight)
+        # print(f"{module}: Error \"{new_module.weight_quant.compute_dequantization_error(module.weight, d_weight)}\" ")
+        new_module.weight = q_weight
 
         return new_module
 
     def __repr__(self):
-        qdeets = (f", act_quant=({self.data_metry['activations']['per']}, {self.data_metry['activations']['dtype']}), weight_quant=({self.data_metry['weights']['per']},{self.data_metry['weights']['dtype']}), output_quant=({self.data_metry['activations']['per']}, {self.data_metry['activations']['dtype']})")
+        output_qdeets = f"outputq={self.data_metry['outputs']['symmentry'][:4]}/{str(self.data_metry['outputs']['dtype']).split('.')[-1]}/{self.data_metry['outputs']['per']}" if (self.data_metry['outputs']['dtype'] is not None) else f"outputq={None}"
+        qdeets = (f", actq={self.data_metry['activations']['symmentry'][:4]}/{str(self.data_metry['activations']['dtype']).split('.')[-1]}/{self.data_metry['activations']['per']},"
+                  f" weightq={self.data_metry['weights']['symmentry'][:4]}/{str(self.data_metry['weights']['dtype']).split('.')[-1]}/{self.data_metry['weights']['per']}, {output_qdeets}"
+                  )
         if self.cnn:
             return f"QConv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None}"+qdeets
         else:

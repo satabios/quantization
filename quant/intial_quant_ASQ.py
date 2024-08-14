@@ -8,6 +8,7 @@ from models import VGG
 from dataset import dataloader
 import gc
 from sconce import sconce
+from Chunker import Chunker
 
 
 model = VGG()
@@ -24,46 +25,60 @@ sconces.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print("Prior Scaling:", sconces.evaluate())
 
-ma = ModelAnalyzer(model)
-mapped_layers = ma.mapped_layers
-layer_list = [idx for idx, l_n in enumerate(mapped_layers['catcher']['name_list'])
-              if isinstance(eval(l_n), (nn.Conv2d,nn.Linear))]
+quantized_model = Chunker(sconces.model.to('cpu'), dataloader['test']).model
+sconces.model= quantized_model.to('cpu')
+print("Pre  AWQ-Quant:", sconces.evaluate(device='cpu'))
 
+mapped_layers = ModelAnalyzer(sconces.model, sconces.dataloader['test']).mapped_layers
+
+layer_list = [(idx,l_n) for idx, l_n in enumerate(mapped_layers['name_list'])
+              if isinstance(eval(l_n), (nn.Conv2d,nn.Linear))]
 # Activation Aware Scaling
 final_scales = []
-with torch.no_grad():
-  for idxr in range(1,len(layer_list)):
-    idx_prev, idx_curr = layer_list[idxr-1], layer_list[idxr]
+with (torch.no_grad()):
+  for layer_name_idx in range(1,len(layer_list)):
+    prev_layer_data , curr_layer_data = mapped_layers['calibiration_data'][layer_list[layer_name_idx-1][1]], \
+                                        mapped_layers['calibiration_data'][layer_list[layer_name_idx][1]]
 
     #  Find Activation Scales
-    x, w, y, module = mapped_layers['catcher']['x'][idx_curr], mapped_layers['catcher']['w'][idx_curr], \
-      mapped_layers['catcher']['y'][idx_curr], eval(mapped_layers['catcher']['name_list'][idx_curr])
+    x, w, y, module = curr_layer_data['activations'], curr_layer_data['weights'], \
+      curr_layer_data['outputs'], curr_layer_data['layer']
+
     scales = _search_module_scale(x, w, module, y)
     final_scales.append(scales)
 
-    prev_module = eval(mapped_layers['catcher']['name_list'][idx_prev])
+    prev_module = prev_layer_data['layer']
 
     #  Apply A-Scales
     if(prev_module.weight.data.dim()==4):
       prev_module.weight.data.div_(scales.view(-1, 1, 1, 1))
     elif(prev_module.weight.data.dim()==2):
       prev_module.weight.data.div_(scales.view(1, -1))
-    mapped_layers['catcher']['w'][idx_prev] = prev_module.weight.data
 
+    #Update Dict Data
+    curr_layer_data['weights'] = module.weight.data
+    prev_layer_data['weights'] = prev_module.weight.data
+
+
+sconces.model= model
+print("Post  AWQ:", sconces.evaluate())
+
+quantized_model = Chunker(sconces.model.to('cpu'), dataloader['test']).model
+sconces.model= quantized_model.to('cpu')
+print("Post  AWQ-Quant:", sconces.evaluate(device='cpu'))
 #Run on calib data and record hooks
 #Apply Smoothing
 
 
-ma = ModelAnalyzer(model)
-mapped_layers = ma.mapped_layers
-linear_list  = [idx for idx, l_n in enumerate(mapped_layers['catcher']['name_list']) if isinstance(eval(l_n), nn.Linear)]
 
 with torch.no_grad():
+    for layer_name_idx in range(1, len(layer_list)):
+        prev_layer_data, curr_layer_data = mapped_layers['calibiration_data'][layer_list[layer_name_idx - 1]], \
+        mapped_layers['calibiration_data'][layer_list[layer_name_idx]]
 
-    for idx in range(1,len(linear_list)):
-        idx_prev, idx_curr = linear_list[idx - 1], linear_list[idx]
-        curr_layer, layer_inputs = eval(mapped_layers['catcher']['name_list'][idx_curr]),mapped_layers['catcher']['x'][idx_curr]
-        prev_layer = eval(mapped_layers['catcher']['name_list'][idx_prev])
+        curr_layer, layer_inputs = curr_layer_data['layer'],curr_layer_data['activations']
+        prev_layer = prev_layer_data['layer']
+
         act_scales = get_act_scale(layer_inputs)
         weight_scales = get_act_scale(curr_layer.weight.data)
         alpha = 0.5

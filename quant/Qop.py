@@ -80,6 +80,14 @@ class Qop:   #currently supporting int8 and bfloat16
             tensor = self.tensor.view(-1, self.q_group_size)
             self.compute_scales_zero_point_dimension(tensor, dim=0)
 
+
+    def push_to_tensor_device(self, tensor):
+
+        self.scales = torch.tensor(self.scales).to(tensor.device)
+        self.zero_point = torch.tensor(self.zero_point).to(tensor.device)
+
+
+
     def quantize(self, tensor):
 
         self.tensor = tensor
@@ -87,6 +95,8 @@ class Qop:   #currently supporting int8 and bfloat16
         self.compute_scale_zero_pointer()
 
         tensor = self.tensor.detach().clone()
+
+        self.push_to_tensor_device(tensor)
 
         if(self.per == 'group'):
             orig_tensor_shape = tensor.shape
@@ -104,6 +114,9 @@ class Qop:   #currently supporting int8 and bfloat16
 
     @torch.no_grad()
     def dequantize(self, quantized_tensor):
+
+        self.push_to_tensor_device(quantized_tensor)
+
         if (self.per == 'group'):
             quantized_tensor_reshaped = quantized_tensor.clone().view(quantized_tensor.shape[0] * (quantized_tensor.shape[1] // self.q_group_size),
                                                   -1)  # Only for Linear Layer
