@@ -80,11 +80,12 @@ class Qop:   #currently supporting int8 and bfloat16
             tensor = self.tensor.view(-1, self.q_group_size)
             self.compute_scales_zero_point_dimension(tensor, dim=0)
 
-
     def push_to_tensor_device(self, tensor):
 
-        self.scales = torch.tensor(self.scales).to(tensor.device)
-        self.zero_point = torch.tensor(self.zero_point).to(tensor.device)
+        if isinstance(self.zero_point, torch.Tensor):
+            self.zero_point = self.zero_point.clone().detach().to(tensor.device)
+        else:
+            self.zero_point = torch.tensor(self.zero_point).to(tensor.device)
 
 
 
