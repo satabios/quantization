@@ -1,7 +1,7 @@
 import torch
 from ModelAnalyzer import ModelAnalyzer
 from Quantizer import Quantizer
-
+import torch.nn.functional as F
 class Chunker(ModelAnalyzer):
 
     def __init__(self, model, calibiration_data):
@@ -70,31 +70,50 @@ class Chunker(ModelAnalyzer):
                 # Dtype: int8, fp8, etc..
                 # Symmentric: True, False
                 # Compute Error for each qlayer and get the least mse error of qlayer_op and layer_data['output']
-                qlayer_wise = ("dim", 0) if layer_data['layer_type'][1] == "Conv2d" else ("tensor", None)
-                q_params = {'weights': {'dtype': torch.int8,
-                                        # 'symmentry': self.analyze_quantization_potential(layer_data['weights'].data),
-                                        'symmentry': "asymmentric",
-                                        'per': qlayer_wise[0],
-                                        'per_dim': qlayer_wise[1]},
-                            'activations': {'dtype': torch.int8,
-                                            # 'symmentry': self.analyze_quantization_potential(layer_data['activations']),
-                                            'symmentry': "asymmentric",
-                                            # 'per': qlayer_wise[0],
-                                            # 'per_dim': qlayer_wise[1]},
-                                            'per': "tensor",
-                                            'per_dim': None
-                                            },
-                            'outputs': {'dtype': None,
-                                        'symmentry': None,
-                                        'per': None,
-                                        'per_dim': None}
-                            }
 
-                qlayer = Quantizer.from_float(module=eval('self.' + layer_name),
+                global_err = float("inf")
+                params = None
+
+                layer_under_test = eval('self.' + layer_name)
+                activations = layer_data['activations']
+                out = layer_data['outputs']
+
+                data_type = torch.int8
+
+                for act_affine in [("dim", 0), ("tensor", None)]:
+                    for act_sym in ["asymmentric","symmentric"]:
+                        for weight_affine in [("dim", 0), ("tensor", None)]:
+                            for weight_sym in ["asymmentric", "symmentric"]:
+
+                                q_params = {'weights': {'dtype': data_type,
+                                                        'symmentry': act_sym,
+                                                        'per': act_affine[0],
+                                                        'per_dim': act_affine[1]},
+                                            'activations': {'dtype': data_type,
+                                                            'symmentry': weight_sym,
+                                                            'per': weight_affine[0],
+                                                            'per_dim': weight_affine[1]
+                                                            },
+                                            'outputs': {'dtype': None,
+                                                        'symmentry': None,
+                                                        'per': None,
+                                                        'per_dim': None}
+                                            }
+
+                                qlayer_test = Quantizer.from_float(module=layer_under_test,
+                                                              activations=layer_data['activations'],
+                                                              data_metry=q_params
+                                                              )
+                                qout = qlayer_test.forward(activations)
+                                mse = F.mse_loss(qout, out)
+                                if(mse<global_err):
+                                    global_err = mse
+                                    params = q_params
+
+                qlayer = Quantizer.from_float(module=layer_under_test,
                                               activations=layer_data['activations'],
-                                              data_metry=q_params
+                                              data_metry=params
                                               )
-
                 self.replace_layer(layer_name, qlayer)
 
 

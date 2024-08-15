@@ -90,11 +90,13 @@ class Quantizer(nn.Module):
                                           weight=self.weight,
                                           stride=self.stride,
                                           padding=self.padding,
+                                          # bias=self.bias,
                                           dilation=self.dilation,
                                           groups=self.groups)
         else:
             y = torch.functional.F.linear(input=q_x,
-                                          weight=self.weight
+                                          weight=self.weight,
+                                          # bias=self.bias
                                           )
 
         if (self.bias is not None):
@@ -144,8 +146,8 @@ class Quantizer(nn.Module):
             )
 
         q_weight = new_module.weight_quant.quantize(module.weight)
-        # d_weight = new_module.weight_quant.dequantize(q_weight)
-        # print(f"{module}: Error \"{new_module.weight_quant.compute_dequantization_error(module.weight, d_weight)}\" ")
+        d_weight = new_module.weight_quant.dequantize(q_weight)
+        print(f"{module}: Error \"{new_module.weight_quant.compute_dequantization_error(module.weight, d_weight)}\" ")
         new_module.weight = q_weight
 
         return new_module
