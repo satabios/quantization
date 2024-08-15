@@ -6,7 +6,7 @@ from matplotlib.colors import ListedColormap
 import seaborn as sns
 
 class Qop:   #currently supporting int8 and bfloat16
-    def __init__(self, dtype, w_a=None, per='tensor',per_dim=None, group_size=-1, symentric=False):
+    def __init__(self, dtype, w_a=None, affine='tensor',affine_dim=None, group_size=-1, symentric=False):
 
         self.symentric = symentric
         self.dtype = dtype
@@ -25,22 +25,28 @@ class Qop:   #currently supporting int8 and bfloat16
         self.q_group_size = group_size
 
         # Per - Channel or Row or Column or Group
-        self.per = per  # Wise --> Tensor, Channel, Group
-        self.per_dim = per_dim
+        self.affine = affine  # Wise --> Tensor, Channel, Group
+        self.affine_dim = affine_dim
 
         self.scales = None
         self.zero_point = None
 
     @torch.no_grad()
-    def compute_scales_zero_point(self,tensor):
+    def compute_scales_zero_point(self, tensor=None):
 
-        if(self.symentric):
-            self.max_val = tensor.abs().max().item()
-            scales = self.max_val/self.q_max
+        if(self.min_val is not None and self.max_val is not None): # Use pre-computed Observer Min Max
+            if (self.symentric):
+                scales = self.max_val / self.q_max
+            else:
+                scales = (self.max_val - self.min_val) / (self.q_max - self.q_min)
         else:
-            self.max_val = tensor.max().item()
-            self.min_val = tensor.min().item()
-            scales = (self.max_val - self.min_val) / (self.q_max - self.q_min)
+            if(self.symentric):
+                self.max_val = tensor.abs().max().item()
+                scales = self.max_val/self.q_max
+            else:
+                self.max_val = tensor.max().item()
+                self.min_val = tensor.min().item()
+                scales = (self.max_val - self.min_val) / (self.q_max - self.q_min)
 
         if self.symentric:
             zero_point = 0
@@ -67,13 +73,13 @@ class Qop:   #currently supporting int8 and bfloat16
 
     def compute_scale_zero_pointer(self):
 
-        if (self.per == 'tensor'):   # Per Tensor
+        if (self.affine == 'tensor'):   # Per Tensor
             self.compute_scales_zero_point_dimension(self.tensor)
-        elif(self.per == 'dim'):     # Per-Channel
+        elif(self.affine == 'channel'):     # Per-Channel
             # Linear: [output_neurons, input_neurons]
             # Conv2d: [C_out, C_in, Width, Height]
-            self.compute_scales_zero_point_dimension(self.tensor, dim=self.per_dim)
-        elif(self.per == 'group'):   # Per Group
+            self.compute_scales_zero_point_dimension(self.tensor, dim=self.affine_dim)
+        elif(self.affine == 'group'):   # Per Group
             assert self.tensor_shape[1] % self.q_group_size == 0
             assert self.tensor.dim() == 2 #For Linear
 
@@ -93,13 +99,15 @@ class Qop:   #currently supporting int8 and bfloat16
 
         self.tensor = tensor
         self.tensor_shape = self.tensor.shape
-        self.compute_scale_zero_pointer()
+
+        if(self.zero_point is None or self.scales is None): #If preset Ignore
+            self.compute_scale_zero_pointer()
 
         tensor = self.tensor.detach().clone()
 
         self.push_to_tensor_device(tensor)
 
-        if(self.per == 'group'):
+        if(self.affine == 'group'):
             orig_tensor_shape = tensor.shape
             tensor = tensor.clone().view(tensor.shape[0] * (tensor.shape[1] // self.q_group_size), -1) #Only for Linear Layer
 
@@ -108,7 +116,7 @@ class Qop:   #currently supporting int8 and bfloat16
         else:
             self.quantized_tensor = torch.round(tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
 
-        if(self.per == 'group'):
+        if(self.affine == 'group'):
             self.quantized_tensor = self.quantized_tensor.view(orig_tensor_shape)
 
         return self.quantized_tensor.type(self.dtype)
@@ -118,7 +126,7 @@ class Qop:   #currently supporting int8 and bfloat16
 
         self.push_to_tensor_device(quantized_tensor)
 
-        if (self.per == 'group'):
+        if (self.affine == 'group'):
             quantized_tensor_reshaped = quantized_tensor.clone().view(quantized_tensor.shape[0] * (quantized_tensor.shape[1] // self.q_group_size),
                                                   -1)  # Only for Linear Layer
             dequantized_tensor = self.scales * (quantized_tensor_reshaped.float() - self.zero_point)

@@ -2,6 +2,9 @@ import torch
 from ModelAnalyzer import ModelAnalyzer
 from Quantizer import Quantizer
 import torch.nn.functional as F
+import torch.quantization.observer as observer
+import torch.nn as nn
+
 class Chunker(ModelAnalyzer):
 
     def __init__(self, model, calibiration_data):
@@ -61,59 +64,105 @@ class Chunker(ModelAnalyzer):
             setattr(attr_obj, last_part, qlayer)
 
 
+    def prepare_model(self):
+
+        for idx, layer_name in enumerate(self.mapped_layers['calibiration_data'].keys()):
+            observer_layer = observer.HistogramObserver()
+            layer = eval('self.'+layer_name)
+            # self.activation_quant.scales, self.activation_quant.zero_point = hist_observer.calculate_qparams()
+            stubbed_layer = nn.Sequential(
+                                          layer,
+                                          observer_layer
+                                         )
+            self.replace_layer(layer_name, stubbed_layer)
+
+    def remove_stubbed_quantize (self):
+        for idx, layer_name in enumerate(self.mapped_layers['calibiration_data'].keys()):
+            layer = eval('self.'+layer_name)
+            modified_layer, output_params = layer[0], layer[1].calculate_qparams()
+
+            dtype = torch.int8
+            sym = "asymmentric"
+            affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
+
+            q_params = {
+                        'weights': {'dtype': dtype,
+                                    'symmentry': sym,
+                                    'affine': affine[0],
+                                    'affine_dim': affine[1]},
+                        'activations': {'dtype': dtype,
+                                        'symmentry': None,
+                                        'affine': None,
+                                        'affine_dim': None
+                                        },
+                        'outputs': {'dtype': dtype,
+                                    'symmentry': sym,
+                                    'affine': output_params[0].item(),
+                                    'affine_dim': output_params[1].item() }
+                        }
+
+            activations = self.mapped_layers['calibiration_data'][layer_name]['activations']
+            qlayer = Quantizer.from_float(module=modified_layer,
+                                          activations=activations,
+                                          data_metry=q_params,
+                                          quantize_output=True
+                                          )
+            self.replace_layer(layer_name, qlayer)
+
+
+    def calibirate_model(self):
+        with torch.no_grad():
+            for input_data, _ in self.calibiration_data:
+                _ = self.model(input_data)
+
     def chunk(self):
 
-            # Run through configs for each layer and compute the error!
-            for layer_name, layer_data in self.mapped_layers['calibiration_data'].items():
-                # Weights, Activations
-                # Per: Group, Channel, Tensor, etc..
-                # Dtype: int8, fp8, etc..
-                # Symmentric: True, False
-                # Compute Error for each qlayer and get the least mse error of qlayer_op and layer_data['output']
-
-                global_err = float("inf")
-                params = None
-
-                layer_under_test = eval('self.' + layer_name)
-                activations = layer_data['activations']
-                out = layer_data['outputs']
-
-                data_type = torch.int8
-
-                for act_affine in [("dim", 0), ("tensor", None)]:
-                    for act_sym in ["asymmentric","symmentric"]:
-                        for weight_affine in [("dim", 0), ("tensor", None)]:
-                            for weight_sym in ["asymmentric", "symmentric"]:
-
-                                q_params = {'weights': {'dtype': data_type,
-                                                        'symmentry': act_sym,
-                                                        'per': act_affine[0],
-                                                        'per_dim': act_affine[1]},
-                                            'activations': {'dtype': data_type,
-                                                            'symmentry': weight_sym,
-                                                            'per': weight_affine[0],
-                                                            'per_dim': weight_affine[1]
-                                                            },
-                                            'outputs': {'dtype': None,
-                                                        'symmentry': None,
-                                                        'per': None,
-                                                        'per_dim': None}
-                                            }
-
-                                qlayer_test = Quantizer.from_float(module=layer_under_test,
-                                                              activations=layer_data['activations'],
-                                                              data_metry=q_params
-                                                              )
-                                qout = qlayer_test.forward(activations)
-                                mse = F.mse_loss(qout, out)
-                                if(mse<global_err):
-                                    global_err = mse
-                                    params = q_params
-
-                qlayer = Quantizer.from_float(module=layer_under_test,
-                                              activations=layer_data['activations'],
-                                              data_metry=params
-                                              )
-                self.replace_layer(layer_name, qlayer)
+        self.prepare_model()
+        self.calibirate_model()
+        self.remove_stubbed_quantize()
 
 
+
+        ###############################
+            # out = None
+            # # Run through configs for each layer and compute the error!
+            # for layer_name, layer_data in self.mapped_layers['calibiration_data'].items():
+            #     # Weights, Activations
+            #     # Per: Group, Channel, Tensor, etc..
+            #     # Dtype: int8, fp8, etc..
+            #     # Symmentric: True, False
+            #     # Compute Error for each qlayer and get the least mse error of qlayer_op and layer_data['output']
+            #
+            #     layer_under_test = eval('self.' + layer_name)
+            #     if(out is None): activations = layer_data['activations'] #Inital Activations
+            #     else:
+            #         activations = out.reshape_as(layer_data['activations'])
+            #
+            #     data_type = torch.int8
+            #     sym = "asymmentric"
+            #     affine = ("channel", 0) if isinstance(layer_under_test, torch.nn.Conv2d) else ("tensor", None)
+            #
+            #     q_params = {'weights': {'dtype': data_type,
+            #                             'symmentry': sym,
+            #                             'affine': affine[0],
+            #                             'affine_dim': affine[1]},
+            #                 'activations': {'dtype': data_type,
+            #                                 'symmentry': sym,
+            #                                 'affine': affine[0],
+            #                                 'affine_dim': affine[1]
+            #                                 },
+            #                 'outputs': {'dtype': None,
+            #                             'symmentry': None,
+            #                             'affine': None,
+            #                             'affine_dim': None}
+            #                 }
+            #
+            #
+            #     qlayer = Quantizer.from_float(module=layer_under_test,
+            #                                   activations=activations,
+            #                                   data_metry=q_params
+            #                                   )
+            #     out = qlayer.forward(activations) #Update layer out with the replaced quantization
+            #     self.replace_layer(layer_name, qlayer)
+            #
+            #

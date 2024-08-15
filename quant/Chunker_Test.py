@@ -4,6 +4,7 @@ import torch
 from models import SimpleCNN, VGG
 from Chunker import Chunker
 from tqdm import tqdm
+from Qop import Qop
 import torch.nn.functional as F
 from sconce import sconce
 import torch.nn as nn
@@ -43,24 +44,14 @@ def evaluate_model(model, test_loader):
 vgg = VGG()
 vgg.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
 # smp = SimpleCNN()
-# test_data = torch.rand(1, 3, 128, 128)
+test_data = torch.rand(1, 3, 128, 128)
 
 
-print(f"Original Model Accuracy : {evaluate_model(vgg, dataloader['test'])}")
+# print(f"Original Model Accuracy : {evaluate_model(vgg, dataloader['test'])}")
 fuser = Fuse(vgg.eval(), dataloader['test'])
 fused_model = fuser.fused_model.train()
 quantized_model = Chunker(fused_model, dataloader['test']).model
-print(quantized_model)
-print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader['test'])}")
-# Define all parameters
 
-# from sconce import sconce
-#
-# sconces = sconce()
-# sconces.model= quantized_model # Model Definition
-# sconces.criterion = nn.CrossEntropyLoss() # Loss
-# sconces.optimizer= optim.Adam(sconces.model.parameters(), lr=1e-4)
-# sconces.scheduler = optim.lr_scheduler.CosineAnnealingLR(sconces.optimizer, T_max=200)
-# sconces.dataloader = dataloader
-# sconces.epochs = 5 #Number of time we iterate over the data
-# print(sconces.evaluate())
+out = quantized_model(test_data)
+print(out)
+print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader['test'])}")
