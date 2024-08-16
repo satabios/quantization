@@ -59,7 +59,7 @@ class SimpleCNN(nn.Module):
         # Max pooling layer
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         # Fully connected layer taking 64*8*8 input features, 128 output features
-        self.fc1 = nn.Linear(64 * 8 * 8, 128)
+        self.fc1 = nn.Linear(64 * 6 * 6, 128)
         # Batch normalization for the first fully connected layer
         self.bn3 = nn.BatchNorm1d(128)
         # Final fully connected layer producing 10 output features
@@ -69,6 +69,7 @@ class SimpleCNN(nn.Module):
         x = self.conv1(x)
         x = self.pool(F.relu(x))
         x = self.pool(F.relu(self.conv2(x)))
+        print(x.shape)
         x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
         # Output layer

@@ -66,47 +66,59 @@ class Chunker(ModelAnalyzer):
 
     def prepare_model(self):
 
-        for idx, layer_name in enumerate(self.mapped_layers['calibiration_data'].keys()):
-            observer_layer = observer.HistogramObserver()
-            layer = eval('self.'+layer_name)
-            # self.activation_quant.scales, self.activation_quant.zero_point = hist_observer.calculate_qparams()
-            stubbed_layer = nn.Sequential(
-                                          layer,
-                                          observer_layer
-                                         )
-            self.replace_layer(layer_name, stubbed_layer)
+        internal_list = [('Conv2d', 'ReLU'), ('Linear', 'ReLU'), ('Conv2d',), ('Linear',)]
+        for keys in internal_list:
+            for lyrs_data in self.mapped_layers['sequences'][keys]:
+                lyrs = []
+                for lr in lyrs_data:
+                    lyrs.append(eval('self.' + lr))
 
-    def remove_stubbed_quantize (self):
+                stubbed_layer = nn.Sequential(
+                                      torch.ao.quantization.QuantStub(),
+                                      *lyrs,
+                                      torch.ao.quantization.DeQuantStub()
+                                     )
+                self.replace_layer(lyrs_data[0], stubbed_layer)
+                if(len(lyrs) > 1):
+                    self.replace_layer(lyrs_data[1], nn.Identity())
+
+        #Update the skeleton
+        self.mapped_layers = ModelAnalyzer(self.model, self.calibiration_data).mapped_layers
+
+
+    def quantize (self):
         for idx, layer_name in enumerate(self.mapped_layers['calibiration_data'].keys()):
             layer = eval('self.'+layer_name)
-            modified_layer, output_params = layer[0], layer[1].calculate_qparams()
 
             dtype = torch.int8
             sym = "asymmentric"
             affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
 
-            q_params = {
-                        'weights': {'dtype': dtype,
-                                    'symmentry': sym,
-                                    'affine': affine[0],
-                                    'affine_dim': affine[1]},
-                        'activations': {'dtype': dtype,
-                                        'symmentry': None,
-                                        'affine': None,
-                                        'affine_dim': None
-                                        },
-                        'outputs': {'dtype': dtype,
-                                    'symmentry': sym,
-                                    'affine': output_params[0].item(),
-                                    'affine_dim': output_params[1].item() }
-                        }
-
+            # q_params = {
+            #             'weights': {'dtype': dtype,
+            #                         'symmentry': sym,
+            #                         'affine': affine[0],
+            #                         'affine_dim': affine[1]},
+            #             'activations': {'dtype': dtype,
+            #                             'symmentry': None,
+            #                             'affine': None,
+            #                             'affine_dim': None
+            #                             },
+            #             'outputs': {'dtype': dtype,
+            #                         'symmentry': None,
+            #                         'affine': None,
+            #                         'affine_dim': None}
+            #
+            #             }
+            q_params = {'weights': {'dtype': torch.int8, 'symmentry': 'asymmentric', 'affine': 'tensor', 'affine_dim': None}, 'activations': {'dtype': torch.int8, 'symmentry': None, 'affine': None, 'affine_dim': None}, 'outputs': {'dtype': torch.int8, 'symmentry': 'asymmentric', 'affine': 0.0248358566313982, 'affine_dim': 148}}
             activations = self.mapped_layers['calibiration_data'][layer_name]['activations']
-            qlayer = Quantizer.from_float(module=modified_layer,
-                                          activations=activations,
-                                          data_metry=q_params,
-                                          quantize_output=True
+
+            qlayer = Quantizer.from_float(  module = layer,
+                                            activations = activations,
+                                            data_metry = q_params,
+                                            quantize_output = True
                                           )
+
             self.replace_layer(layer_name, qlayer)
 
 
@@ -117,9 +129,11 @@ class Chunker(ModelAnalyzer):
 
     def chunk(self):
 
+
+
         self.prepare_model()
         self.calibirate_model()
-        self.remove_stubbed_quantize()
+        self.quantize()
 
 
 

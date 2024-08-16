@@ -75,16 +75,16 @@ class Quantizer(nn.Module):
 
         self.quantize_output = quantize_output  # Flag
 
-        if(self.quantize_output):
-
-            self.output_quant = Qop(dtype=data_metry['outputs']['dtype'],
-                                    symentric=data_metry['outputs']['symmentry'],
-                                    affine="tensor",
-                                    affine_dim=None)
-
-            self.output_quant.min_val = data_metry['outputs']['affine']
-            self.output_quant.max_val = data_metry['outputs']['affine_dim']
-            self.output_quant.scales, self.output_quant.zero_point = self.output_quant.compute_scales_zero_point()
+        # if(self.quantize_output):
+        #
+        #     self.output_quant = Qop(dtype=data_metry['outputs']['dtype'],
+        #                             symentric=data_metry['outputs']['symmentry'],
+        #                             affine="tensor",
+        #                             affine_dim=None)
+        #
+        #     self.output_quant.min_val = data_metry['outputs']['affine']
+        #     self.output_quant.max_val = data_metry['outputs']['affine_dim']
+        #     self.output_quant.scales, self.output_quant.zero_point = self.output_quant.compute_scales_zero_point()
 
     def to(self, *args, **kwargs):
         super(Quantizer, self).to(*args, **kwargs)
@@ -96,7 +96,7 @@ class Quantizer(nn.Module):
     @torch.no_grad()
     def forward(self, x):
 
-        self.weight = self.weight if(x.dtype==self.weight.dtype) else self.weight_quant.dequantize(self.weight)
+        self.weight = self.weight_quant.dequantize(self.weight)
 
         if (self.weight.dim() == 4):
 
@@ -104,27 +104,27 @@ class Quantizer(nn.Module):
                                           weight= self.weight,
                                           stride=self.stride,
                                           padding=self.padding,
-                                          # bias=self.bias,
+                                          bias=self.bias,
                                           dilation=self.dilation,
                                           groups=self.groups)
         else:
             y = torch.functional.F.linear(input= x,
                                           weight=self.weight,
-                                          # bias=self.bias
+                                          bias=self.bias
                                           )
 
-        if (self.bias is not None):
-            y_index = y.shape.index(self.bias.shape[0])
-            reshaped_bias = self.bias.view([1 if i != y_index else self.bias.shape[0] for i in range(len(y.shape))])
-            y = y+reshaped_bias
+        # if (self.bias is not None):
+        #     y_index = y.shape.index(self.bias.shape[0])
+        #     reshaped_bias = self.bias.view([1 if i != y_index else self.bias.shape[0] for i in range(len(y.shape))])
+        #     y = y+reshaped_bias
 
         # Output Quantization
-        if  y.dtype != self.weight.dtype:
-            return self.output_quant.dequantize(y)
-        if self.quantize_output:
-            return self.output_quant.quantize(y)
-        else:
-            return y
+        # if  y.dtype != self.weight.dtype:
+        #     return self.output_quant.dequantize(y)
+        # if self.quantize_output:
+        #     return self.output_quant.quantize(y)
+        # else:
+        return y
 
     @staticmethod
     def from_float(

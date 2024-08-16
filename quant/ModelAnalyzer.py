@@ -170,27 +170,7 @@ class ModelAnalyzer:
 
         return summary
 
-    def find_patterns(self, model):
-        sequences = [['Conv2d', 'Linear'], ['Linear', 'Linear'], ['Conv2d', 'Conv2d'], ['Conv2d', 'BatchNorm2d', 'Conv2d']]
-        sequences_identifier = ['Conv2d_Linear', 'Linear_Linear', 'Conv2d_Conv2d','Conv2d_BatchNorm2d_Conv2d']
-        sek = {}
-        layer_types = self.mapped_layers['type_list']
-        layer_names = self.mapped_layers['name_list']
-        def matches(sublist, seq):
-            return sublist == seq
 
-        for idx, seq in enumerate(sequences):
-            seq_len = len(seq)
-            results = []
-
-            # Loop through the layer types to find matching subsequences
-            for i in range(len(layer_types) - seq_len + 1):
-                if matches(layer_types[i:i + seq_len].tolist(), seq):
-                    matched_names = layer_names[i:i + seq_len]
-                    results.append(matched_names)
-            sek[sequences_identifier[idx]] = results
-
-        self.mapped_layers['sequences'] = sek
 
 
     def layer_mapping(self, model):
@@ -227,7 +207,49 @@ class ModelAnalyzer:
         layer_types = name_type_shape[:, 1]
         layer_shapes = name_type_shape[:, 2]
 
+        def find_combinations_indices(layer_type, layer_name, combinations):
+            # Sort combinations by length to prioritize longer combinations first
+            combinations = sorted(combinations, key=len, reverse=True)
+            results = {tuple(combo): [] for combo in
+                       combinations}  # Initialize the dictionary to store indices for each combo
+            used_indices = set()  # Set to keep track of indices that are already part of a combination
 
+            # Loop through the list, checking for combinations
+            for i in range(len(layer_type)):
+                for combo in combinations:
+                    if i + len(combo) <= len(layer_type) and all(
+                            layer_type[i + j] == combo[j] for j in range(len(combo))):
+                        # Check if any of the indices in the potential match have been used already
+                        current_indices = set(range(i, i + len(combo)))
+                        if not current_indices & used_indices:  # Ensure there is no overlap with already used indices
+                            # Record the indices tuple if the combination matches and indices are free
+                            results[tuple(combo)].append(list(layer_name[i + j] for j in range(len(combo))))
+                            used_indices.update(current_indices)  # Mark these indices as used
+
+            return results
+        # def find_combinations_indices(layer_type, layer_name, combinations):
+        #     results = {tuple(combo): [] for combo in
+        #                combinations}  # Initialize the dictionary to store indices for each combo
+        #
+        #     # Loop through the list, checking for combinations
+        #     for i in range(len(layer_type)):
+        #         for combo in combinations:
+        #             if i + len(combo) <= len(layer_type) and all(layer_type[i + j] == combo[j] for j in range(len(combo))):
+        #                 # Record the indices tuple if the combination matches
+        #                 results[tuple(combo)].append(tuple(layer_name[i + j] for j in range(len(combo))))
+        #
+        #     # Post-processing to remove overlaps
+        #     # Prioritize longer combinations (assuming combinations are sorted by preference)
+        #     handled_indices = set()
+        #     for combo in sorted(results, key=len, reverse=True):
+        #         new_indices = []
+        #         for index_tuple in results[combo]:
+        #             if not any(idx in handled_indices for idx in index_tuple):
+        #                 new_indices.append(index_tuple)
+        #                 handled_indices.update(index_tuple)
+        #         results[combo] = new_indices
+        #
+        #     return results
 
         layer_name, layer_type = name_type_shape[:, 0], name_type_shape[:, 1]
         layer_name, layer_type = list(layer_name), list(layer_type)
@@ -236,46 +258,22 @@ class ModelAnalyzer:
             ["Conv2d", "BatchNorm2d", "ReLU"],
             ["Conv2d", "ReLU"],
             ["Linear", "ReLU"],
-            ["BatchNorm2d", "ReLU"]
+            ["BatchNorm2d", "ReLU"],
+            ['Conv2d'],
+            ['Linear']
         ]
-
-        # Initialize containers for the current sequence of layers being analyzed and the final list of fusible layers
-        current_streak = ([], [])
+        mapped_layers = {'model_layer': []}
+        mapped_layers['sequences'] = find_combinations_indices(layer_types, layer_name, possible_combinations)
         fusable_layers = []
+        for l_keys, fuse_layers in mapped_layers['sequences'].items():
+            fusable_layers.extend(fuse_layers)
+        mapped_layers['fusable_layers'] =  fusable_layers
+        # Initialize containers for the current sequence of layers being analyzed and the final list of fusible layers
 
-        # Reverse the lists to use pop operation efficiently
-        layer_names = list(reversed([name[6:] for name in layer_name]))
-        layer_types = list(reversed(layer_type))
 
-        # Process each layer
-        while layer_types:
-            current_type = layer_types.pop()
-            current_name = layer_names.pop()
-            current_streak[0].append(current_type)
-            current_streak[1].append(current_name)
 
-            # Check if the current sequence is in the possible combinations
-            if current_streak[0] in possible_combinations:
-                # Check and handle the case when the current streak can potentially be extended
-                if len(current_streak[0]) == 2 and layer_types:
-                    next_type = layer_types.pop()
-                    next_name = layer_names.pop()
-                    if current_streak[0] + [next_type] in possible_combinations:
-                        fusable_layers.append(current_streak[1] + [next_name])
-                        current_streak = ([], [])
-                    else:
-                        layer_types.append(next_type)
-                        layer_names.append(next_name)
-                        fusable_layers.append(current_streak[1])
-                        current_streak = ([next_type], [next_name])
-                else:
-                    fusable_layers.append(current_streak[1])
-                    current_streak = ([], [])
-            elif len(current_streak[0]) > 3:
-                # Reset the current streak to the last element if it exceeds the maximum length in combinations
-                current_streak = ([current_type], [current_name])
 
-        mapped_layers = {'model_layer': [], 'fusable_layers': fusable_layers}
+
 
 
         mapped_layers['name_type_shape'] = name_type_shape
@@ -320,7 +318,7 @@ class ModelAnalyzer:
 
 
         self.mapped_layers = mapped_layers
-        self.find_patterns(model)
+
 
         layers_to_remove  = ['model_layer', 'Conv2d_BatchNorm2d_ReLU', 'Conv2d_BatchNorm2d', 'Linear_ReLU', 'Linear_BatchNorm1d',
                    'name_type_shape']

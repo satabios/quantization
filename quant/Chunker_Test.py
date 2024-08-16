@@ -14,6 +14,7 @@ import torch.optim as optim
 # mbnet = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2')
 
 
+
 def evaluate_model(model, test_loader):
     # Set the model to evaluation mode
     model.eval()
@@ -43,9 +44,10 @@ def evaluate_model(model, test_loader):
 
 vgg = VGG()
 vgg.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
-# smp = SimpleCNN()
+# # smp = SimpleCNN()
 test_data = torch.rand(1, 3, 128, 128)
 
+# resnet = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18')
 
 # print(f"Original Model Accuracy : {evaluate_model(vgg, dataloader['test'])}")
 fuser = Fuse(vgg.eval(), dataloader['test'])
