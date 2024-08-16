@@ -93,32 +93,32 @@ class Chunker(ModelAnalyzer):
         for idx, layer_name in enumerate( self.interested_layers):
             layer = eval('self.'+layer_name)
             input_qparams, output_qparams = layer[0].calculate_qparams(),layer[-1].calculate_qparams()
-            input_qparams = {'scale':input_qparams[0], 'zero_point':input_qparams[1]}
-            output_qparams = {'scale':output_qparams[0], 'zero_point':output_qparams[1]}
+            input_qparams = {'scale':input_qparams[0].item(), 'zero_point':input_qparams[1].item()}
+            output_qparams = {'scale':output_qparams[0].item(), 'zero_point':output_qparams[1].item()}
             dtype = torch.int8
             sym = "asymmentric"
             affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
 
-            # q_params = {
-            #             'weights': {'dtype': dtype,
-            #                         'symmentry': sym,
-            #                         'affine': affine[0],
-            #                         'affine_dim': affine[1]},
-            #             'activations': {'dtype': dtype,
-            #                             'symmentry': None,
-            #                             'affine': None,
-            #                             'affine_dim': None
-            #                             },
-            #             'outputs': {'dtype': dtype,
-            #                         'symmentry': None,
-            #                         'affine': None,
-            #                         'affine_dim': None}
-            #
-            #             }
-            q_params = {'weights': {'dtype': torch.int8, 'symmentry': 'asymmentric', 'affine': 'tensor', 'affine_dim': None}, 'activations': {'dtype': torch.int8, 'symmentry': None, 'affine': None, 'affine_dim': None}, 'outputs': {'dtype': torch.int8, 'symmentry': 'asymmentric', 'affine': 0.0248358566313982, 'affine_dim': 148}}
-            activations = self.mapped_layers['calibiration_data'][layer_name]['activations']
+            q_params = {
+                        'weights': {'dtype': dtype,
+                                    'symmentry': sym,
+                                    'affine': affine[0],
+                                    'affine_dim': affine[1]},
+                        'activations': {'dtype': dtype,
+                                        'symmentry': "symmentric" if(input_qparams['scale']==0) else "asymmentric",
+                                        'scale': input_qparams['scale'],
+                                        'zero_point': input_qparams['zero_point']
+                                        },
+                        'outputs': {'dtype': dtype,
+                                    'symmentry': "symmentric" if(output_qparams['scale']==0) else "asymmentric",
+                                        'scale': output_qparams['scale'],
+                                        'zero_point': output_qparams['zero_point']
+                                    }
 
-            qlayer = Quantizer.from_float(  module = layer,
+                        }
+            activations = torch.rand(1,3,32,32)
+
+            qlayer = Quantizer.from_float(  module = layer[1],
                                             activations = activations,
                                             data_metry = q_params,
                                             quantize_output = True
@@ -137,8 +137,9 @@ class Chunker(ModelAnalyzer):
 
 
         self.prepare_model()
-        self.calibirate_model()
+
         self.quantize()
+        self.calibirate_model()
 
 
 

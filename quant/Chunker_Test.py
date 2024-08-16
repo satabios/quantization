@@ -45,18 +45,18 @@ def evaluate_model(model, test_loader):
 vgg = VGG()
 vgg.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
 # # smp = SimpleCNN()
-test_data = torch.rand(1, 3, 128, 128)
+# test_data = torch.rand(1, 3, 128, 128)
 
 # resnet = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18')
 
-# print(f"Original Model Accuracy : {evaluate_model(vgg, dataloader['test'])}")
+print(f"Original Model Accuracy : {evaluate_model(vgg, dataloader['test'])}")
 fuser = Fuse(vgg.eval(), dataloader['test'])
 fused_model = fuser.fused_model.train()
 
-
+print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader['test'])}")
 
 quantized_model = Chunker(fused_model, dataloader['test']).model
 
-out = quantized_model(test_data)
-print(out)
+# out = quantized_model(test_data)
+# print(out)
 print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader['test'])}")

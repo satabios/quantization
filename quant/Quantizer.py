@@ -51,6 +51,17 @@ class Quantizer(nn.Module):
         else:
             self.register_buffer("bias", None)
 
+        self.activation_quant = Qop(dtype=data_metry['activations']['dtype'],
+                                    symentric=data_metry['activations']['symmentry'],
+                                    affine="tensor",
+                                    affine_dim=None)
+        self.activation_quant.scales, self.activation_quant.zero_point = data_metry['activations']['scale'], data_metry['activations']['zero_point']
+        self.output_quant = Qop(dtype=data_metry['outputs']['dtype'],
+                                    symentric=data_metry['outputs']['symmentry'],
+                                    affine="tensor",
+                                    affine_dim=None)
+        self.output_quant.scales, self.output_quant.zero_point = data_metry['outputs']['scale'], data_metry['outputs']['zero_point']
+
         #
         # if(activations is not None): #Only if the activations are given
         #     self.activation_quant = Qop(dtype=data_metry['activations']['dtype'],
@@ -96,7 +107,7 @@ class Quantizer(nn.Module):
     @torch.no_grad()
     def forward(self, x):
 
-        self.weight = self.weight_quant.dequantize(self.weight)
+        x = self.weight_quant.quantize(x)
 
         if (self.weight.dim() == 4):
 
@@ -104,19 +115,19 @@ class Quantizer(nn.Module):
                                           weight= self.weight,
                                           stride=self.stride,
                                           padding=self.padding,
-                                          bias=self.bias,
+                                          # bias=self.bias,
                                           dilation=self.dilation,
                                           groups=self.groups)
         else:
             y = torch.functional.F.linear(input= x,
                                           weight=self.weight,
-                                          bias=self.bias
+                                          # bias=self.bias
                                           )
 
-        # if (self.bias is not None):
-        #     y_index = y.shape.index(self.bias.shape[0])
-        #     reshaped_bias = self.bias.view([1 if i != y_index else self.bias.shape[0] for i in range(len(y.shape))])
-        #     y = y+reshaped_bias
+        if (self.bias is not None):
+            y_index = y.shape.index(self.bias.shape[0])
+            reshaped_bias = self.bias.view([1 if i != y_index else self.bias.shape[0] for i in range(len(y.shape))])
+            y = y+reshaped_bias
 
         # Output Quantization
         # if  y.dtype != self.weight.dtype:
