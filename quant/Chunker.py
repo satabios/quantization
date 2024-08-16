@@ -11,6 +11,7 @@ class Chunker(ModelAnalyzer):
         self.model = model
         self.calibiration_data = calibiration_data
         self.mapped_layers = ModelAnalyzer(self.model, self.calibiration_data).mapped_layers
+        self.interested_layers = []
         self.chunk()
 
     def analyze_quantization_potential(self, tensor):
@@ -72,12 +73,14 @@ class Chunker(ModelAnalyzer):
                 lyrs = []
                 for lr in lyrs_data:
                     lyrs.append(eval('self.' + lr))
-
+                prior = torch.ao.quantization.observer.HistogramObserver()
+                post = torch.ao.quantization.observer.HistogramObserver()
                 stubbed_layer = nn.Sequential(
-                                      torch.ao.quantization.QuantStub(),
+                                      prior,
                                       *lyrs,
-                                      torch.ao.quantization.DeQuantStub()
+                                      post
                                      )
+                self.interested_layers.append(lyrs_data[0])
                 self.replace_layer(lyrs_data[0], stubbed_layer)
                 if(len(lyrs) > 1):
                     self.replace_layer(lyrs_data[1], nn.Identity())
@@ -87,9 +90,11 @@ class Chunker(ModelAnalyzer):
 
 
     def quantize (self):
-        for idx, layer_name in enumerate(self.mapped_layers['calibiration_data'].keys()):
+        for idx, layer_name in enumerate( self.interested_layers):
             layer = eval('self.'+layer_name)
-
+            input_qparams, output_qparams = layer[0].calculate_qparams(),layer[-1].calculate_qparams()
+            input_qparams = {'scale':input_qparams[0], 'zero_point':input_qparams[1]}
+            output_qparams = {'scale':output_qparams[0], 'zero_point':output_qparams[1]}
             dtype = torch.int8
             sym = "asymmentric"
             affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)

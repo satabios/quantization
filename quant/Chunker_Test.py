@@ -52,6 +52,9 @@ test_data = torch.rand(1, 3, 128, 128)
 # print(f"Original Model Accuracy : {evaluate_model(vgg, dataloader['test'])}")
 fuser = Fuse(vgg.eval(), dataloader['test'])
 fused_model = fuser.fused_model.train()
+
+
+
 quantized_model = Chunker(fused_model, dataloader['test']).model
 
 out = quantized_model(test_data)
