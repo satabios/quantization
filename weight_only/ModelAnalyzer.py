@@ -259,11 +259,13 @@ class ModelAnalyzer:
             ["Conv2d", "ReLU"],
             ["Linear", "ReLU"],
             ["BatchNorm2d", "ReLU"],
-            ['Conv2d'],
-            ['Linear']
+
         ]
         mapped_layers = {'model_layer': []}
         mapped_layers['sequences'] = find_combinations_indices(layer_types, layer_name, possible_combinations)
+        w_layers = [            ['Conv2d'],
+            ['Linear']]
+        mapped_layers['sequences'].update(find_combinations_indices(layer_types, layer_name, w_layers))
         fusable_layers = []
         for l_keys, fuse_layers in mapped_layers['sequences'].items():
             fusable_layers.extend(fuse_layers)

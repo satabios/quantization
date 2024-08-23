@@ -40,7 +40,6 @@ class Quantizer(nn.Module):
             affine=data_metrics['weights']['affine'],
             affine_dim=data_metrics['weights']['affine_dim']
         )
-
         self.quantize_output = quantize_output
 
         if self.bias is None:

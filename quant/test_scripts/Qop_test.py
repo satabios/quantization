@@ -30,14 +30,14 @@ vgg = VGG()
 vgg.load_state_dict(torch.load("../vgg.cifar.pretrained.pth"))
 
 tensor = vgg.backbone.conv0.weight
-quantizer = Qop(dtype=torch.int8, symentric=False, per='dim', per_dim=0)
+quantizer = Qop(dtype=torch.int8, symentric=False, per='channel', per_dim=0)
 quantized_tensor = quantizer.quantize(tensor)
 dequantized_tensor = quantizer.dequantize(quantized_tensor)
 mse = F.mse_loss(tensor, dequantized_tensor)
 print(mse)
 
 
-quantizer = Qop(dtype=torch.int8, symentric=True, per='dim', per_dim=0)
+quantizer = Qop(dtype=torch.int8, symentric=True, per='channel', per_dim=0)
 quantized_tensor = quantizer.quantize(tensor)
 dequantized_tensor = quantizer.dequantize(quantized_tensor)
 mse = F.mse_loss(tensor, dequantized_tensor)

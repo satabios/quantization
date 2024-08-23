@@ -36,7 +36,7 @@ class Quantizer(nn.Module):
 
         self.weight_quant = Qop(
             dtype=data_metrics['weights']['dtype'],
-            symentric=data_metrics['weights']['symmentry'],
+            symentric=data_metrics['weights']['symentric'],
             affine=data_metrics['weights']['affine'],
             affine_dim=data_metrics['weights']['affine_dim']
         )
@@ -54,15 +54,9 @@ class Quantizer(nn.Module):
     def forward(self, x):
         self.weight = self.weight_quant.dequantize(self.weight)
         if self.cnn:
-            y = F.conv2d(x, self.weight, stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups)
+            y = F.conv2d(x, self.weight, stride=self.stride, bias=self.bias, padding=self.padding, dilation=self.dilation, groups=self.groups)
         else:
-            y = F.linear(x, self.weight)
-
-        if self.bias is not None:
-            bias_shape = [1] * len(y.shape)
-            bias_shape[1] = self.bias.size(0)  # Assuming bias is to be added to the channel dimension
-            y += self.bias.view(bias_shape)
-
+            y = F.linear(x, self.weight, bias=self.bias)
         return y
 
     @staticmethod
@@ -89,12 +83,14 @@ class Quantizer(nn.Module):
     def __repr__(self):
         # Check if 'outputs' and 'weights' are not None and handle accordingly
         if self.data_metrics and 'outputs' in self.data_metrics and self.data_metrics['outputs']:
-            output_details = f"outputq={self.data_metrics['outputs'].get('symmetry', '')[0:4]}/{str(self.data_metrics['outputs'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['outputs'].get('affine', '')}"
+            sym = "sym" if self.data_metrics['outputs'].get('symmetry', '') else "asym"
+            output_details = f"outputq={sym}/{str(self.data_metrics['outputs'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['outputs'].get('affine', '')}"
         else:
             output_details = "outputq=None"
 
         if self.data_metrics and 'weights' in self.data_metrics and self.data_metrics['weights']:
-            weight_details = f"weightq={self.data_metrics['weights'].get('symmetry', '')[0:4]}/{str(self.data_metrics['weights'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['weights'].get('affine', '')}, {output_details}"
+            sym = "sym" if self.data_metrics['weights'].get('symmetry', '') else "asym"
+            weight_details = f"weightq={sym}/{str(self.data_metrics['weights'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['weights'].get('affine', '')}, {output_details}"
         else:
             weight_details = "weightq=None"
 

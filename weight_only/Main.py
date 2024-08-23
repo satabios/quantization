@@ -25,6 +25,7 @@ vgg = VGG()
 vgg.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
 fuser = Fuse(vgg.eval(), dataloader['test'])
 fused_model = fuser.fused_model.train()
-print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader['test'])}")
+# print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader['test'])}")
 quantized_model = Chunker(fused_model, dataloader['test']).model
+print(quantized_model)
 print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader['test'])}")

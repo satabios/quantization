@@ -97,12 +97,16 @@ class Chunker(ModelAnalyzer):
                 layer = eval('self.'+ layer_name)
 
                 dtype = torch.int8
-                sym = "asymmentric"
+
                 affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
+                if(isinstance(layer, torch.nn.Conv2d)):
+                    qdict= {'dtype':torch.int8, 'symentric':True,'affine':'channel', 'affine_dim':0}
+                else:
+                    qdict = {'dtype': torch.int8,'symentric': False,'affine': 'tensor','affine_dim':None}
                 q_params = {
-                    'weights': {'dtype': dtype, 'symmentry': sym, 'affine': affine[0], 'affine_dim': affine[1]},
-                    'activations': {'dtype': dtype},
-                    'outputs': {'dtype': dtype}
+                    'weights': qdict,
+                    # 'activations': {'dtype': dtype},
+                    # 'outputs': {'dtype': dtype}
                 }
                 qlayer = Quantizer.from_float(module=layer, data_metry=q_params, quantize_output=False)
                 self.replace_layer(layer_name, qlayer)
