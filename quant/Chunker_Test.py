@@ -1,62 +1,30 @@
 from Fusion import Fuse
 from dataset import dataloader
 import torch
-from models import SimpleCNN, VGG
+from models import VGG
 from Chunker import Chunker
 from tqdm import tqdm
-from Qop import Qop
-import torch.nn.functional as F
-from sconce import sconce
-import torch.nn as nn
-import torch.optim as optim
 
-# resnet = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18')
-# mbnet = torch.hub.load('pytorch/vision:v0.10.0', 'mobilenet_v2')
-
-
-
-def evaluate_model(model, test_loader):
-    # Set the model to evaluation mode
+def evaluate_model(model, test_loader, device ='cuda'):
     model.eval()
-
-    # Initialize counters for correct predictions and total samples
+    model.to(device)
     correct = 0
     total = 0
-
-    # Disable gradient computation since we are in inference mode
     with torch.no_grad():
-        for data in tqdm(test_loader, desc="Evaluating", leave=False):
+        for data in tqdm(test_loader):
             inputs, labels = data
+            inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
-
-            # Get the predicted class (the one with the highest probability)
             _, predicted = torch.max(outputs.data, 1)
-
-            # Update the total and correct counters
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-
-    # Calculate accuracy
     accuracy = 100 * correct / total
-
     return accuracy
-
 
 vgg = VGG()
 vgg.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
-# # smp = SimpleCNN()
-# test_data = torch.rand(1, 3, 128, 128)
-
-# resnet = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18')
-
-print(f"Original Model Accuracy : {evaluate_model(vgg, dataloader['test'])}")
 fuser = Fuse(vgg.eval(), dataloader['test'])
 fused_model = fuser.fused_model.train()
-
 print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader['test'])}")
-
 quantized_model = Chunker(fused_model, dataloader['test']).model
-
-# out = quantized_model(test_data)
-# print(out)
 print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader['test'])}")

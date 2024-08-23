@@ -1,7 +1,7 @@
 import torch
 from Qop import Qop
 import torch.nn as nn
-import torch.quantization.observer as observer
+import torch.nn.functional as F
 
 class Quantizer(nn.Module):
     def __init__(
@@ -16,89 +16,38 @@ class Quantizer(nn.Module):
             bias=None,
             quantize_output=False,
             cnn=False,
-            data_metry = None,
+            data_metrics=None,
             activations=None
-
     ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.cnn = cnn
-        self.data_metry = data_metry
-        if self.cnn:
-            self.kernel_size = kernel_size
-            self.stride = stride
-            self.padding = padding
-            self.dilation = dilation
-            self.groups = groups
-            self.weight_shape = (self.out_features, self.in_features, *self.kernel_size)
-            # self.data_metry['weights']['per'] = "" Change it to Channel-Wise
-        else:
-            self.weight_shape = (self.out_features, self.in_features)
+        self.data_metrics = data_metrics
+        self.kernel_size = kernel_size if cnn else None
+        self.stride = stride if cnn else None
+        self.padding = padding if cnn else None
+        self.dilation = dilation if cnn else None
+        self.groups = groups if cnn else None
 
+        self.weight_shape = (self.out_features, self.in_features, *self.kernel_size) if cnn else (self.out_features, self.in_features)
+        self.register_buffer("weight", torch.randn(self.weight_shape, dtype=torch.float16, requires_grad=False))
+        self.bias = None if bias is None else bias
 
-        self.register_buffer(
-            "weight",
-            torch.randn(
-                self.weight_shape,
-                dtype=torch.float16,
-                requires_grad=False,
-            ),
+        self.weight_quant = Qop(
+            dtype=data_metrics['weights']['dtype'],
+            symentric=data_metrics['weights']['symmentry'],
+            affine=data_metrics['weights']['affine'],
+            affine_dim=data_metrics['weights']['affine_dim']
         )
 
-        if bias is not None:
-            self.bias = bias
-        else:
-            self.register_buffer("bias", None)
+        self.quantize_output = quantize_output
 
-        self.activation_quant = Qop(dtype=data_metry['activations']['dtype'],
-                                    symentric=data_metry['activations']['symmentry'],
-                                    affine="tensor",
-                                    affine_dim=None)
-        self.activation_quant.scales, self.activation_quant.zero_point = data_metry['activations']['scale'], data_metry['activations']['zero_point']
-        self.output_quant = Qop(dtype=data_metry['outputs']['dtype'],
-                                    symentric=data_metry['outputs']['symmentry'],
-                                    affine="tensor",
-                                    affine_dim=None)
-        self.output_quant.scales, self.output_quant.zero_point = data_metry['outputs']['scale'], data_metry['outputs']['zero_point']
-
-        #
-        # if(activations is not None): #Only if the activations are given
-        #     self.activation_quant = Qop(dtype=data_metry['activations']['dtype'],
-        #                                 symentric=data_metry['activations']['symmentry'],
-        #                                 affine="tensor",
-        #                                 affine_dim=None)
-        #
-        #
-        #
-        #
-        #     #Custom Observer for Activations
-        #     hist_observer = observer.HistogramObserver()
-        #     hist_observer(activations)
-        #     self.activation_quant.scales, self.activation_quant.zero_point = hist_observer.calculate_qparams()
-        #     # deq_a = self.activation_quant.dequantize(activations)
-        #     # print(self.activation_quant.compute_dequantization_error(activations, deq_a))
-
-        self.weight_quant = Qop(dtype=data_metry['weights']['dtype'],
-                                symentric=data_metry['weights']['symmentry'],
-                                affine=data_metry['weights']['affine'],
-                                affine_dim=data_metry['weights']['affine_dim'])
-
-        self.quantize_output = quantize_output  # Flag
-
-        # if(self.quantize_output):
-        #
-        #     self.output_quant = Qop(dtype=data_metry['outputs']['dtype'],
-        #                             symentric=data_metry['outputs']['symmentry'],
-        #                             affine="tensor",
-        #                             affine_dim=None)
-        #
-        #     self.output_quant.min_val = data_metry['outputs']['affine']
-        #     self.output_quant.max_val = data_metry['outputs']['affine_dim']
-        #     self.output_quant.scales, self.output_quant.zero_point = self.output_quant.compute_scales_zero_point()
+        if self.bias is None:
+            self.bias = nn.Parameter(torch.zeros(self.out_features))
 
     def to(self, *args, **kwargs):
-        super(Quantizer, self).to(*args, **kwargs)
+        super().to(*args, **kwargs)
         self.weight = self.weight.to(*args, **kwargs)
         if self.bias is not None:
             self.bias = self.bias.to(*args, **kwargs)
@@ -106,83 +55,48 @@ class Quantizer(nn.Module):
 
     @torch.no_grad()
     def forward(self, x):
-
-        x = self.weight_quant.quantize(x)
-
-        if (self.weight.dim() == 4):
-
-            y = torch.functional.F.conv2d(input= x,
-                                          weight= self.weight,
-                                          stride=self.stride,
-                                          padding=self.padding,
-                                          # bias=self.bias,
-                                          dilation=self.dilation,
-                                          groups=self.groups)
+        self.weight = self.weight_quant.dequantize(self.weight)
+        if self.cnn:
+            y = F.conv2d(x, self.weight, stride=self.stride, bias=self.bias, padding=self.padding, dilation=self.dilation, groups=self.groups)
         else:
-            y = torch.functional.F.linear(input= x,
-                                          weight=self.weight,
-                                          # bias=self.bias
-                                          )
+            y = F.linear(x, self.weight, bias=self.bias)
 
-        if (self.bias is not None):
-            y_index = y.shape.index(self.bias.shape[0])
-            reshaped_bias = self.bias.view([1 if i != y_index else self.bias.shape[0] for i in range(len(y.shape))])
-            y = y+reshaped_bias
-
-        # Output Quantization
-        # if  y.dtype != self.weight.dtype:
-        #     return self.output_quant.dequantize(y)
-        # if self.quantize_output:
-        #     return self.output_quant.quantize(y)
-        # else:
         return y
 
     @staticmethod
-    def from_float(
-            module, weight_quant="tensor", act_quant="tensor", quantize_output=False, activations=None, data_metry=None
-
-    ):
-
-
-        # Weight per_channel/per_tensor quantization; Activation per_token/per_tensor quantization
-        if (isinstance(module, torch.nn.Linear)):
-            new_module = Quantizer(
-                in_features=module.in_features,
-                out_features=module.out_features,
-                bias=module.bias,
-                quantize_output=quantize_output,
-                data_metry = data_metry,
-                activations=activations,
-
-            )
-        elif (isinstance(module, torch.nn.Conv2d)):
-            new_module = Quantizer(
-                in_features=module.in_channels,
-                out_features=module.out_channels,
-                kernel_size=module.kernel_size,
-                stride=module.stride,
-                padding=module.padding,
-                dilation=module.dilation,
-                groups=module.groups,
-                bias=module.bias,
-                quantize_output=quantize_output,
-                cnn=True,
-                data_metry=data_metry,
-                activations = activations
-            )
-
-        q_weight = new_module.weight_quant.quantize(module.weight)
-        # d_weight = new_module.weight_quant.dequantize(q_weight)
-        # print(f"{module}: Error \"{new_module.weight_quant.compute_dequantization_error(module.weight, d_weight)}\" ")
-        new_module.weight = q_weight
-
+    def from_float(module, quantize_output=False, activations=None, data_metry=None):
+        # print("Creating Quantizer from module:", module)
+        new_module = Quantizer(
+            in_features=module.in_features if isinstance(module, nn.Linear) else module.in_channels,
+            out_features=module.out_features if isinstance(module, nn.Linear) else module.out_channels,
+            kernel_size=module.kernel_size if isinstance(module, nn.Conv2d) else None,
+            stride=module.stride if isinstance(module, nn.Conv2d) else None,
+            padding=module.padding if isinstance(module, nn.Conv2d) else None,
+            dilation=module.dilation if isinstance(module, nn.Conv2d) else None,
+            groups=module.groups if isinstance(module, nn.Conv2d) else None,
+            bias=module.bias,
+            quantize_output=quantize_output,
+            cnn=isinstance(module, nn.Conv2d),
+            data_metrics=data_metry,
+            activations=activations
+        )
+        new_module.weight = new_module.weight_quant.quantize(module.weight)
+        # print("Initialized weights and quantization parameters.", new_module)
         return new_module
 
     def __repr__(self):
-        output_qdeets = f"outputq={self.data_metry['outputs']['symmentry'][:4]}/{str(self.data_metry['outputs']['dtype']).split('.')[-1]}/{self.data_metry['outputs']['affine']}" if (self.data_metry['outputs']['dtype'] is not None) else f"outputq={None}"
-        qdeets = (f" ,weightq={self.data_metry['weights']['symmentry'][:4]}/{str(self.data_metry['weights']['dtype']).split('.')[-1]}/{self.data_metry['weights']['affine']}, {output_qdeets}"
-                  )
-        if self.cnn:
-            return f"QConv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None}"+qdeets
+        # Check if 'outputs' and 'weights' are not None and handle accordingly
+        if self.data_metrics and 'outputs' in self.data_metrics and self.data_metrics['outputs']:
+            output_details = f"outputq={self.data_metrics['outputs'].get('symmetry', '')[0:4]}/{str(self.data_metrics['outputs'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['outputs'].get('affine', '')}"
         else:
-            return f"QLinear({self.in_features}, {self.out_features}, bias={self.bias is not None}"+qdeets
+            output_details = "outputq=None"
+
+        if self.data_metrics and 'weights' in self.data_metrics and self.data_metrics['weights']:
+            weight_details = f"weightq={self.data_metrics['weights'].get('symmetry', '')[0:4]}/{str(self.data_metrics['weights'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['weights'].get('affine', '')}, {output_details}"
+        else:
+            weight_details = "weightq=None"
+
+        if self.cnn:
+            return f"QConv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None}) {weight_details}"
+        else:
+            return f"QLinear({self.in_features}, {self.out_features}, bias={self.bias is not None}) {weight_details}"
