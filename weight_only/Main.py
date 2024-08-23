@@ -1,5 +1,4 @@
 from Fusion import Fuse
-from dataset import dataloader
 import torch
 from models import VGG
 from Chunker import Chunker
@@ -21,11 +20,14 @@ def evaluate_model(model, test_loader, device ='cuda'):
     accuracy = 100 * correct / total
     return accuracy
 
-vgg = VGG()
-vgg.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
-fuser = Fuse(vgg.eval(), dataloader['test'])
+# vgg = VGG()
+# vgg.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
+from dataset import Dataset
+model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+dataloader = Dataset('imagenet')
+fuser = Fuse(model.eval(), dataloader)
 fused_model = fuser.fused_model.train()
 # print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader['test'])}")
-quantized_model = Chunker(fused_model, dataloader['test']).model
+quantized_model = Chunker(fused_model, dataloader).model
 print(quantized_model)
-print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader['test'])}")
+print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader)}")
