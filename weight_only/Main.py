@@ -20,14 +20,19 @@ def evaluate_model(model, test_loader, device ='cuda'):
     accuracy = 100 * correct / total
     return accuracy
 
-# vgg = VGG()
-# vgg.load_state_dict(torch.load("vgg.cifar.pretrained.pth"))
+
 from dataset import Dataset
-model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
-dataloader = Dataset('imagenet')
+# model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+dataloader = Dataset('cifar10')
+
+model = VGG()
+model.load_state_dict(torch.load("/home/sathya/Desktop/Projects/quantization/weight_only/vgg.cifar.pretrained.pth"))
+print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
+
+
 fuser = Fuse(model.eval(), dataloader)
 fused_model = fuser.fused_model.train()
-# print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader['test'])}")
-quantized_model = Chunker(fused_model, dataloader).model
+print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader)}")
+quantized_model = Chunker(model, dataloader).model
 print(quantized_model)
-print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader)}")
+print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader,device='cuda')}")

@@ -52,11 +52,14 @@ class Quantizer(nn.Module):
 
     @torch.no_grad()
     def forward(self, x):
-        self.weight = self.weight_quant.dequantize(self.weight)
+
         if self.cnn:
-            y = F.conv2d(x, self.weight, stride=self.stride, bias=self.bias, padding=self.padding, dilation=self.dilation, groups=self.groups)
+            y = F.conv2d(x, self.weight.to(x.dtype), stride=self.stride, bias=self.bias, padding=self.padding, dilation=self.dilation, groups=self.groups)
         else:
-            y = F.linear(x, self.weight, bias=self.bias)
+            y = F.linear(x, self.weight.to(x.dtype), bias=self.bias)
+
+        y = self.weight_quant.dequantize(y, activation=True if self.weight_quant.affine=="channel" else False)
+
         return y
 
     @staticmethod

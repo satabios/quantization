@@ -15,17 +15,21 @@ class Fuse(ModelAnalyzer):
 
         ma = ModelAnalyzer(self.model, self.calibiration_data)
         mapped_layers = ma.mapped_layers
-        layer_name_type = [mapped_layers['name_list'],mapped_layers['type_list']]
         self.fused_model = self.fuse_layers(fusable_layers=mapped_layers['fusable_layers'])
 
     def fuse_layers(self, fusable_layers):
+        fusing_layers= []
         for outer_idx in range(len(fusable_layers)):
-            for idx in range(len(fusable_layers[outer_idx])):
-                fusable_layers[outer_idx][idx]=fusable_layers[outer_idx][idx][6:]
+            if(len(fusable_layers[outer_idx])>1):
+                pipo = []
+                for idx in range(len(fusable_layers[outer_idx])):
+                    pipo.append(fusable_layers[outer_idx][idx][6:])
+                fusing_layers.append(pipo)
 
         try: #Try with Custom Fusion
-            model_fused = torch.quantization.fuse_modules(self.model, fusable_layers, inplace=True)
+            model_fused = torch.quantization.fuse_modules(self.model, fusing_layers, inplace=True)
         except:
             model_fused = quantize_fx.fuse_fx(self.model)
 
         return model_fused
+    

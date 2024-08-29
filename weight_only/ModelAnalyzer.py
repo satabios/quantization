@@ -227,30 +227,7 @@ class ModelAnalyzer:
                             used_indices.update(current_indices)  # Mark these indices as used
 
             return results
-        # def find_combinations_indices(layer_type, layer_name, combinations):
-        #     results = {tuple(combo): [] for combo in
-        #                combinations}  # Initialize the dictionary to store indices for each combo
-        #
-        #     # Loop through the list, checking for combinations
-        #     for i in range(len(layer_type)):
-        #         for combo in combinations:
-        #             if i + len(combo) <= len(layer_type) and all(layer_type[i + j] == combo[j] for j in range(len(combo))):
-        #                 # Record the indices tuple if the combination matches
-        #                 results[tuple(combo)].append(tuple(layer_name[i + j] for j in range(len(combo))))
-        #
-        #     # Post-processing to remove overlaps
-        #     # Prioritize longer combinations (assuming combinations are sorted by preference)
-        #     handled_indices = set()
-        #     for combo in sorted(results, key=len, reverse=True):
-        #         new_indices = []
-        #         for index_tuple in results[combo]:
-        #             if not any(idx in handled_indices for idx in index_tuple):
-        #                 new_indices.append(index_tuple)
-        #                 handled_indices.update(index_tuple)
-        #         results[combo] = new_indices
-        #
-        #     return results
-
+      
         layer_name, layer_type = name_type_shape[:, 0], name_type_shape[:, 1]
         layer_name, layer_type = list(layer_name), list(layer_type)
         possible_combinations = [
@@ -259,13 +236,15 @@ class ModelAnalyzer:
             ["Conv2d", "ReLU"],
             ["Linear", "ReLU"],
             ["BatchNorm2d", "ReLU"],
+            ['Conv2d'],
+            ['Linear']
 
         ]
         mapped_layers = {'model_layer': []}
         mapped_layers['sequences'] = find_combinations_indices(layer_types, layer_name, possible_combinations)
         w_layers = [            ['Conv2d'],
             ['Linear']]
-        mapped_layers['sequences'].update(find_combinations_indices(layer_types, layer_name, w_layers))
+        mapped_layers['w_layers'] = find_combinations_indices(layer_types, layer_name, w_layers)
         fusable_layers = []
         for l_keys, fuse_layers in mapped_layers['sequences'].items():
             fusable_layers.extend(fuse_layers)
