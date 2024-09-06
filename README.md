@@ -1,4 +1,4 @@
-This work aims to replicate quantization from scratch, without using pytorch builting functions. 
+This work aims to replicate quantization from scratch, without using pytorch builtin functions. 
 # Quantization Implementation To-Do List
 
 This document outlines the tasks for implementing various quantization techniques for conventional models and large language models (LLMs). Each section below represents a different quantization approach and its associated techniques.
