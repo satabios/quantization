@@ -226,7 +226,10 @@ class ModelAnalyzer:
                             results[tuple(combo)].append(list(layer_name[i + j] for j in range(len(combo))))
                             used_indices.update(current_indices)  # Mark these indices as used
 
-            return results
+            def remove_empty_values(d):
+                # Remove keys with empty values (None, '', [], etc.)
+                return {k: v for k, v in d.items() if v}
+            return remove_empty_values(results)
       
         layer_name, layer_type = name_type_shape[:, 0], name_type_shape[:, 1]
         layer_name, layer_type = list(layer_name), list(layer_type)
@@ -241,10 +244,14 @@ class ModelAnalyzer:
 
         ]
         mapped_layers = {'model_layer': []}
+
         mapped_layers['sequences'] = find_combinations_indices(layer_types, layer_name, possible_combinations)
-        w_layers = [            ['Conv2d'],
-            ['Linear']]
+        w_layers = [   ['Conv2d'],
+                       ['Linear']]
         mapped_layers['w_layers'] = find_combinations_indices(layer_types, layer_name, w_layers)
+
+        w_layers = [['HistogramObserver']]
+        mapped_layers['observers'] = find_combinations_indices(layer_types, layer_name, w_layers)
         fusable_layers = []
         for l_keys, fuse_layers in mapped_layers['sequences'].items():
             fusable_layers.extend(fuse_layers)

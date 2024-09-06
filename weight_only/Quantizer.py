@@ -54,17 +54,23 @@ class Quantizer(nn.Module):
     def forward(self, x):
 
         if self.cnn:
-            y = F.conv2d(x, self.weight.to(x.dtype), stride=self.stride, bias=self.bias, padding=self.padding, dilation=self.dilation, groups=self.groups)
+            y = F.conv2d(x, self.weight.to(x.dtype), stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups)
         else:
             y = F.linear(x, self.weight.to(x.dtype), bias=self.bias)
 
-        y = self.weight_quant.dequantize(y, activation=True if self.weight_quant.affine=="channel" else False)
+        if (self.bias is not None):
+            if(self.cnn):
+                reshaped_bias = self.bias.view(1, -1, 1, 1)
+            else:
+                reshaped_bias = self.bias.view(1, -1)
+            y = y + reshaped_bias
+
+        y = self.weight_quant.dequantize(y, activation=True)
 
         return y
 
     @staticmethod
     def from_float(module, quantize_output=False, activations=None, data_metry=None):
-        # print("Creating Quantizer from module:", module)
         new_module = Quantizer(
             in_features=module.in_features if isinstance(module, nn.Linear) else module.in_channels,
             out_features=module.out_features if isinstance(module, nn.Linear) else module.out_channels,
@@ -80,7 +86,6 @@ class Quantizer(nn.Module):
             activations=activations
         )
         new_module.weight = new_module.weight_quant.quantize(module.weight)
-        # print("Initialized weights and quantization parameters.", new_module)
         return new_module
 
     def __repr__(self):
@@ -98,6 +103,6 @@ class Quantizer(nn.Module):
             weight_details = "weightq=None"
 
         if self.cnn:
-            return f"QConv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None}) {weight_details}"
+            return f"QConv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None} {weight_details})"
         else:
-            return f"QLinear({self.in_features}, {self.out_features}, bias={self.bias is not None}) {weight_details}"
+            return f"QLinear({self.in_features}, {self.out_features}, bias={self.bias is not None} {weight_details})"

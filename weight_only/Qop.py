@@ -132,15 +132,27 @@ class Qop:   #currently supporting int8 and bfloat16
 
         self.push_to_tensor_device(quantized_tensor.device)
 
-        if (self.affine == 'group'):
-            quantized_tensor_reshaped = quantized_tensor.clone().view(quantized_tensor.shape[0] * (quantized_tensor.shape[1] // self.q_group_size),
-                                                  -1)  # Only for Linear Layer
+        if self.affine == 'group':
+            # Handle group affine quantization (typically for Linear Layer)
+            quantized_tensor_reshaped = quantized_tensor.clone().view(
+                quantized_tensor.shape[0] * (quantized_tensor.shape[1] // self.q_group_size), -1)
             dequantized_tensor = self.scales * (quantized_tensor_reshaped.float() - self.zero_point)
             self.dequantized_tensor = dequantized_tensor.view(quantized_tensor.shape)
-        else:
-            if(activation):
-                self.zero_point, self.scales = self.zero_point.view(1,self.zero_point.shape[0],1,1), self.scales.view(1,self.scales.shape[0],1,1)
 
+        else:
+            # Adapt to both Conv2D and Linear layers
+            if activation:
+                if quantized_tensor.dim() == 4 and self.zero_point.shape[0] != 1:
+                    # Conv2D case: reshape zero_point and scales to (1, C, 1, 1)
+                    self.zero_point, self.scales = self.zero_point.view(1, self.zero_point.shape[0], 1,
+                                                                        1), self.scales.view(1, self.scales.shape[0], 1,
+                                                                                             1)
+                elif quantized_tensor.dim() == 2 and self.zero_point.shape[0] != 1:
+                    # Linear case: reshape zero_point and scales to (1, Features)
+                    self.zero_point, self.scales = self.zero_point.view(1, self.zero_point.shape[0]), self.scales.view(
+                        1, self.scales.shape[0])
+
+            # Apply dequantization
             self.dequantized_tensor = self.scales * (quantized_tensor.float() - self.zero_point)
 
         return self.dequantized_tensor
@@ -162,9 +174,7 @@ class Qop:   #currently supporting int8 and bfloat16
             dequantized_tensor /= max_value
 
         return  F.mse_loss(original_tensor, dequantized_tensor)
-        # return torch.allclose(original_tensor, dequantized_tensor, atol=1e2)
 
-        # return torch.isclose(original_tensor, dequantized_tensor, atol=1e-01)
     def plot_matrix(self, tensor, ax, title, vmin=0, vmax=1, cmap=None):
 
         sns.heatmap(tensor.cpu().numpy(), ax=ax, vmin=vmin, vmax=vmax, cmap=cmap, annot=True, fmt=".2f", cbar=False)

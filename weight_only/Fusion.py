@@ -27,6 +27,7 @@ class Fuse(ModelAnalyzer):
                 fusing_layers.append(pipo)
 
         try: #Try with Custom Fusion
+            print("Custom Fusion Worked")
             model_fused = torch.quantization.fuse_modules(self.model, fusing_layers, inplace=True)
         except:
             model_fused = quantize_fx.fuse_fx(self.model)
