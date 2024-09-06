@@ -90,41 +90,22 @@ class Chunker(ModelAnalyzer):
 
 
     def quantize (self):
-        for idx, layer_name in enumerate( self.interested_layers):
-            layer = eval('self.'+layer_name)
-            input_qparams, output_qparams = layer[0].calculate_qparams(),layer[-1].calculate_qparams()
-            input_qparams = {'scale':input_qparams[0].item(), 'zero_point':input_qparams[1].item()}
-            output_qparams = {'scale':output_qparams[0].item(), 'zero_point':output_qparams[1].item()}
-            dtype = torch.int8
-            sym = "asymmentric"
-            affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
+        internal_list = [('Conv2d',), ('Linear',)]
+        for keys in internal_list:
+            for layer_name in self.mapped_layers['sequences'][keys]:
+                layer_name = layer_name[0]
+                layer = eval('self.'+ layer_name)
 
-            q_params = {
-                        'weights': {'dtype': dtype,
-                                    'symmentry': sym,
-                                    'affine': affine[0],
-                                    'affine_dim': affine[1]},
-                        'activations': {'dtype': dtype,
-                                        'symmentry': "symmentric" if(input_qparams['scale']==0) else "asymmentric",
-                                        'scale': input_qparams['scale'],
-                                        'zero_point': input_qparams['zero_point']
-                                        },
-                        'outputs': {'dtype': dtype,
-                                    'symmentry': "symmentric" if(output_qparams['scale']==0) else "asymmentric",
-                                        'scale': output_qparams['scale'],
-                                        'zero_point': output_qparams['zero_point']
-                                    }
-
-                        }
-            activations = torch.rand(1,3,32,32)
-
-            qlayer = Quantizer.from_float(  module = layer[1],
-                                            activations = activations,
-                                            data_metry = q_params,
-                                            quantize_output = True
-                                          )
-
-            self.replace_layer(layer_name, qlayer)
+                dtype = torch.uint8
+                sym = False
+                affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
+                q_params = {
+                    'weights': {'dtype': dtype, 'asymmentry': sym, 'affine': affine[0], 'affine_dim': affine[1]},
+                    'activations': {'dtype': dtype},
+                    'outputs': {'dtype': dtype}
+                }
+                qlayer = Quantizer.from_float(module=layer, data_metry=q_params, quantize_output=False)
+                self.replace_layer(layer_name, qlayer)
 
 
     def calibirate_model(self):
@@ -134,55 +115,8 @@ class Chunker(ModelAnalyzer):
 
     def chunk(self):
 
-
-
-        self.prepare_model()
+        # self.prepare_model()
 
         self.quantize()
-        self.calibirate_model()
+        # self.calibirate_model()
 
-
-
-        ###############################
-            # out = None
-            # # Run through configs for each layer and compute the error!
-            # for layer_name, layer_data in self.mapped_layers['calibiration_data'].items():
-            #     # Weights, Activations
-            #     # Per: Group, Channel, Tensor, etc..
-            #     # Dtype: int8, fp8, etc..
-            #     # Symmentric: True, False
-            #     # Compute Error for each qlayer and get the least mse error of qlayer_op and layer_data['output']
-            #
-            #     layer_under_test = eval('self.' + layer_name)
-            #     if(out is None): activations = layer_data['activations'] #Inital Activations
-            #     else:
-            #         activations = out.reshape_as(layer_data['activations'])
-            #
-            #     data_type = torch.int8
-            #     sym = "asymmentric"
-            #     affine = ("channel", 0) if isinstance(layer_under_test, torch.nn.Conv2d) else ("tensor", None)
-            #
-            #     q_params = {'weights': {'dtype': data_type,
-            #                             'symmentry': sym,
-            #                             'affine': affine[0],
-            #                             'affine_dim': affine[1]},
-            #                 'activations': {'dtype': data_type,
-            #                                 'symmentry': sym,
-            #                                 'affine': affine[0],
-            #                                 'affine_dim': affine[1]
-            #                                 },
-            #                 'outputs': {'dtype': None,
-            #                             'symmentry': None,
-            #                             'affine': None,
-            #                             'affine_dim': None}
-            #                 }
-            #
-            #
-            #     qlayer = Quantizer.from_float(module=layer_under_test,
-            #                                   activations=activations,
-            #                                   data_metry=q_params
-            #                                   )
-            #     out = qlayer.forward(activations) #Update layer out with the replaced quantization
-            #     self.replace_layer(layer_name, qlayer)
-            #
-            #
