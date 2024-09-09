@@ -89,7 +89,7 @@ class Chunker(ModelAnalyzer):
 
 
     def quantize (self):
-        internal_list = [('Conv2d',), ('Linear',)]
+        internal_list = [('Conv2d', 'BatchNorm2d', 'ReLU',), ('Linear',)]
         for keys in internal_list:
             for layer_name in self.mapped_layers['sequences'][keys]:
                 layer_name = layer_name[0]

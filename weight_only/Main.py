@@ -29,10 +29,10 @@ model = VGG()
 model.load_state_dict(torch.load("/home/sathya/Desktop/Projects/quantization/weight_only/vgg.cifar.pretrained.pth"))
 print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
 
-
-fuser = Fuse(model.eval(), dataloader)
-fused_model = fuser.fused_model.train()
-print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader)}")
+#
+# fuser = Fuse(model.eval(), dataloader)
+# fused_model = fuser.fused_model.train()
+# print(f"Fused Model Accuracy : {evaluate_model(fused_model, dataloader)}")
 quantized_model = Chunker(model, dataloader).model
 print(quantized_model)
 print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader,device='cuda')}")
