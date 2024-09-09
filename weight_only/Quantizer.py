@@ -86,13 +86,13 @@ class Quantizer(nn.Module):
     def __repr__(self):
         # Check if 'outputs' and 'weights' are not None and handle accordingly
         if self.data_metrics and 'outputs' in self.data_metrics and self.data_metrics['outputs']:
-            sym = "sym" if self.data_metrics['outputs'].get('symmetry', '') else "asym"
+            sym = "sym" if self.data_metrics['outputs'].get('symentric', '') else "asym"
             output_details = f"outputq={sym}/{str(self.data_metrics['outputs'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['outputs'].get('affine', '')}"
         else:
             output_details = "outputq=None"
 
         if self.data_metrics and 'weights' in self.data_metrics and self.data_metrics['weights']:
-            sym = "sym" if self.data_metrics['weights'].get('symmetry', '') else "asym"
+            sym = "sym" if self.data_metrics['weights'].get('symentric', '') else "asym"
             weight_details = f"weightq={sym}/{str(self.data_metrics['weights'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['weights'].get('affine', '')}, {output_details}"
         else:
             weight_details = "weightq=None"

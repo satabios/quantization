@@ -3,7 +3,7 @@ from ModelAnalyzer import ModelAnalyzer
 from Quantizer import Quantizer
 import torch.nn as nn
 from tqdm import tqdm
-import re
+from Qact import Qact
 
 class Chunker(ModelAnalyzer):
 
@@ -118,10 +118,9 @@ class Chunker(ModelAnalyzer):
                     qlayer = Quantizer.from_float(module=child, data_metry=q_params, quantize_output=False)
                     setattr(module, name, qlayer)
                 if(target_class=='activations'):
-                    print(child)
-
-
-
+                    qconfig = {'min_val': child.min_val, 'max_val':child.max_val}
+                    qlayer = Qact(qconfig)
+                    setattr(module, name, qlayer)
 
             else:
                 # Recursively call the function for nested modules
