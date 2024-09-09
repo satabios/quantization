@@ -98,6 +98,6 @@ class Quantizer(nn.Module):
             weight_details = "weightq=None"
 
         if self.cnn:
-            return f"QConv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None}) {weight_details}"
+            return f"QConv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None} {weight_details})"
         else:
-            return f"QLinear({self.in_features}, {self.out_features}, bias={self.bias is not None}) {weight_details}"
+            return f"QLinear({self.in_features}, {self.out_features}, bias={self.bias is not None} {weight_details})"

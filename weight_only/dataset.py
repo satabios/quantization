@@ -36,7 +36,7 @@ def Dataset(which):
         return dataloader['test']
     elif which == 'imagenet':
         imagenet_data_path = '/home/sathya/Downloads/Imagenet/imagenet-val'
-        batch_size = 512
+        batch_size = 128
         from torchvision import transforms
         def build_val_transform(size):
             return transforms.Compose([

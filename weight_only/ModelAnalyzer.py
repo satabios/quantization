@@ -268,27 +268,27 @@ class ModelAnalyzer:
         layer_name_list, layer_type_list = [], []
         w, x, y, b = [], [], [], []
         calibiration_data = {}
-        for layer_name in name_list:
-
-            layer = eval(layer_name)
-
-            # isinstance(model, torch.fx.GraphModule) If graphmodule replace the layer_named with _modules
-            # nn.Module: eval('model.features[0][0]')
-            # FX Module: eval('model.features._modules[\'0\']._modules[\'0\']')
-
-            if (isinstance(layer, (nn.Conv2d, nn.Linear))):
-
-                layer_data =  {
-                        'layer_name': layer_name,
-                        'layer_type': (type(layer),str(type(layer)).split('.')[-1][:-2]),
-                        'layer' : layer,
-                        'activations': mapped_layers['model_summary'][layer_name]['x'][0],
-                        'weights': mapped_layers['model_summary'][layer_name]['w'],
-                        'outputs': torch.stack([y.contiguous().clone() for y in mapped_layers['model_summary'][layer_name]['y']])
-                }
-                calibiration_data.update({layer_name: layer_data})
-
-        mapped_layers['calibiration_data'] = calibiration_data
+        # for layer_name in name_list:
+        #
+        #     layer = eval(layer_name)
+        #
+        #     # isinstance(model, torch.fx.GraphModule) If graphmodule replace the layer_named with _modules
+        #     # nn.Module: eval('model.features[0][0]')
+        #     # FX Module: eval('model.features._modules[\'0\']._modules[\'0\']')
+        #
+        #     if (isinstance(layer, (nn.Conv2d, nn.Linear))):
+        #
+        #         layer_data =  {
+        #                 'layer_name': layer_name,
+        #                 'layer_type': (type(layer),str(type(layer)).split('.')[-1][:-2]),
+        #                 'layer' : layer,
+        #                 'activations': mapped_layers['model_summary'][layer_name]['x'][0],
+        #                 'weights': mapped_layers['model_summary'][layer_name]['w'],
+        #                 'outputs': torch.stack([y.contiguous().clone() for y in mapped_layers['model_summary'][layer_name]['y']])
+        #         }
+        #         calibiration_data.update({layer_name: layer_data})
+        #
+        # mapped_layers['calibiration_data'] = calibiration_data
 
         fusion_layers = ['Conv2d_BatchNorm2d_ReLU', 'Conv2d_BatchNorm2d', 'Conv2d_ReLU', 'Linear_BatchNorm1d', 'Linear_ReLU']
         fusion_dict = {}

@@ -113,11 +113,14 @@ class Chunker(ModelAnalyzer):
 
                 if(target_class=='weights'):
                     affine = ("channel", 0) if isinstance(child, torch.nn.Conv2d) else ("tensor", None)
-                    qdict = {'dtype': torch.int8, 'symentric': True, 'affine': 'tensor', 'affine_dim': None}
+                    qdict = {'dtype': torch.int8, 'symentric': True, 'affine': affine[0], 'affine_dim': affine[1]}
                     q_params = {'weights': qdict }
                     qlayer = Quantizer.from_float(module=child, data_metry=q_params, quantize_output=False)
+                    setattr(module, name, qlayer)
+                if(target_class=='activations'):
+                    print(child)
 
-                setattr(module, name, qlayer)
+
 
 
             else:
@@ -126,6 +129,10 @@ class Chunker(ModelAnalyzer):
 
     def weight_quantize(self):
         self.replace_modules(module=self.model, target_class='weights', look_out_for = (torch.nn.Conv2d, torch.nn.Linear))
+
+    def activation_quantize(self):
+        self.replace_modules(module=self.model, target_class='activations', look_out_for = (torch.ao.quantization.ObserverBase))
+
 
     def calibirate_model(self):
         print("Calibrating model...")
@@ -140,6 +147,7 @@ class Chunker(ModelAnalyzer):
         self.prepare_model()
         self.weight_quantize()
         self.calibirate_model()
+        self.activation_quantize()
 
         # isinstance(self.model.backbone.conv0[0], Quantizer)
 

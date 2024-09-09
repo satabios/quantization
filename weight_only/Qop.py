@@ -138,7 +138,7 @@ class Qop:   #currently supporting int8 and bfloat16
             dequantized_tensor = self.scales * (quantized_tensor_reshaped.float() - self.zero_point)
             self.dequantized_tensor = dequantized_tensor.view(quantized_tensor.shape)
         else:
-            if(activation):
+            if(activation and self.scales.shape[1]==1):
                 self.zero_point, self.scales = self.zero_point.view(1,self.zero_point.shape[0],1,1), self.scales.view(1,self.scales.shape[0],1,1)
 
             self.dequantized_tensor = self.scales * (quantized_tensor.float() - self.zero_point)
