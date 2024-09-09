@@ -1,9 +1,9 @@
 import torch
 from ModelAnalyzer import ModelAnalyzer
 from Quantizer import Quantizer
-import torch.nn.functional as F
-import torch.quantization.observer as observer
 import torch.nn as nn
+from tqdm import tqdm
+import re
 
 class Chunker(ModelAnalyzer):
 
@@ -67,14 +67,14 @@ class Chunker(ModelAnalyzer):
 
     def prepare_model(self):
 
-        internal_list = [('Conv2d', 'ReLU'), ('Linear', 'ReLU'), ('Conv2d',), ('Linear',)]
-        for keys in internal_list:
+        # internal_list = [('Conv2d', 'ReLU'), ('Linear', 'ReLU'), ('Conv2d',), ('Linear',)]
+        for keys in self.mapped_layers['sequences'].keys():
             for lyrs_data in self.mapped_layers['sequences'][keys]:
                 lyrs = []
                 for lr in lyrs_data:
                     lyrs.append(eval('self.' + lr))
 
-                post = torch.ao.quantization.observer.HistogramObserver()
+                post = torch.ao.quantization.observer.HistogramObserver().to(next(self.model.parameters()).device)
                 stubbed_layer = nn.Sequential(
                                       *lyrs,
                                       post
@@ -87,42 +87,59 @@ class Chunker(ModelAnalyzer):
         #Update the skeleton
         self.mapped_layers = ModelAnalyzer(self.model, self.calibiration_data).mapped_layers
 
+    def convert_to_modules_notation(self, shorthand):
+        splits = shorthand.split('[')
+        expanded = '._modules['.join(splits)
 
-    def quantize (self):
-        internal_list = [('Conv2d', 'BatchNorm2d', 'ReLU',), ('Linear',)]
-        for keys in internal_list:
-            for layer_name in self.mapped_layers['sequences'][keys]:
-                layer_name = layer_name[0]
-                layer = eval('self.'+ layer_name)
+        return expanded
 
-                dtype = torch.int8
+    # def quantize (self):
+    #     # internal_list = [('Conv2d', 'BatchNorm2d', 'ReLU',), ('Linear',)]
+    #     # for keys in internal_list:
+    #     for lyr_type, layer_names in self.mapped_layers['w_layers'].items():
+    #         for layer_name in layer_names:
+    #             layer_name = layer_name[0]
+    #             layer = eval('self.'+ layer_name)
+    #             affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
+    #             qdict = {'dtype': torch.int8, 'symentric': True, 'affine': 'tensor', 'affine_dim': None}
+    #             q_params = {'weights': qdict }
+    #             qlayer = Quantizer.from_float(module=layer, data_metry=q_params, quantize_output=False)
+    #             self.replace_layer(layer_name, qlayer)
 
-                affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
-                # if(isinstance(layer, torch.nn.Conv2d)):
-                #     qdict= {'dtype':torch.int8, 'symentric':True,'affine':'channel', 'affine_dim':0}
-                # else:
-                #     qdict = {'dtype': torch.int8,'symentric': False,'affine': 'tensor','affine_dim':None}
-                qdict = {'dtype': torch.int8, 'symentric': True, 'affine': 'tensor', 'affine_dim': None}
-                # qdict = {'dtype': torch.int8, 'symentric': True, 'affine': 'channel', 'affine_dim': 0}
+    def replace_modules(self, module, target_class, look_out_for, module_name_to_exclude=""):
+        for name, child in module.named_children():
+            if isinstance(child, look_out_for) and not \
+                    any([x == name for x in module_name_to_exclude]):
 
-                q_params = {
-                    'weights': qdict,
-                    # 'activations': {'dtype': dtype},
-                    # 'outputs': {'dtype': dtype}
-                }
-                qlayer = Quantizer.from_float(module=layer, data_metry=q_params, quantize_output=False)
-                self.replace_layer(layer_name, qlayer)
+                if(target_class=='weights'):
+                    affine = ("channel", 0) if isinstance(child, torch.nn.Conv2d) else ("tensor", None)
+                    qdict = {'dtype': torch.int8, 'symentric': True, 'affine': 'tensor', 'affine_dim': None}
+                    q_params = {'weights': qdict }
+                    qlayer = Quantizer.from_float(module=child, data_metry=q_params, quantize_output=False)
 
+                setattr(module, name, qlayer)
+
+
+            else:
+                # Recursively call the function for nested modules
+                self.replace_modules(child, target_class, look_out_for, module_name_to_exclude)
+
+    def weight_quantize(self):
+        self.replace_modules(module=self.model, target_class='weights', look_out_for = (torch.nn.Conv2d, torch.nn.Linear))
 
     def calibirate_model(self):
+        print("Calibrating model...")
+        device = next(self.model.parameters()).device
         with torch.no_grad():
-            for input_data, _ in self.calibiration_data:
-                _ = self.model(input_data)
+            for input_data, _ in tqdm(self.calibiration_data):
+                _ = self.model(input_data.to(device))
+        print("Calibration done!")
 
     def chunk(self):
 
-        # self.prepare_model()
+        self.prepare_model()
+        self.weight_quantize()
+        self.calibirate_model()
 
-        self.quantize()
-        # self.calibirate_model()
+        # isinstance(self.model.backbone.conv0[0], Quantizer)
 
