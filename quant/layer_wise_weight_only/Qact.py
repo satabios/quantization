@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from Qop import Qop
+from quant.Qop import Qop
 
 class Qact(nn.Module):
     def __init__(self, qconfig):

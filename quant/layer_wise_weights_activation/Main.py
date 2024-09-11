@@ -1,8 +1,9 @@
-from Fusion import Fuse
 import torch
-from models import VGG, LinearNet
+
+from quant.models import VGG, LinearNet
 from Chunker import Chunker
 from tqdm import tqdm
+from quant.dataset import Dataset
 
 def evaluate_model(model, test_loader, device ='cuda'):
     model.eval()
@@ -21,7 +22,7 @@ def evaluate_model(model, test_loader, device ='cuda'):
     return accuracy
 
 
-from dataset import Dataset
+
 # model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
 dataloader = Dataset('cifar10')
 #

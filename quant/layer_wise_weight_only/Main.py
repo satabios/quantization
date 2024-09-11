@@ -1,8 +1,8 @@
-from Fusion import Fuse
 import torch
-from models import VGG
+from quant.models import VGG
 from Chunker import Chunker
 from tqdm import tqdm
+from quant.dataset import Dataset
 
 def evaluate_model(model, test_loader, device ='cuda'):
     model.eval()
@@ -21,12 +21,11 @@ def evaluate_model(model, test_loader, device ='cuda'):
     return accuracy
 
 
-from dataset import Dataset
 # model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
 dataloader = Dataset('cifar10')
 
 model = VGG()
-model.load_state_dict(torch.load("/home/sathya/Desktop/Projects/quantization/weight_only/vgg.cifar.pretrained.pth"))
+model.load_state_dict(torch.load("/home/sathya/Desktop/Projects/quantization/data/weights/vgg.cifar.pretrained.pth"))
 print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
 
 # #

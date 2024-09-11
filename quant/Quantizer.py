@@ -1,5 +1,5 @@
 import torch
-from Qop import Qop
+from quant.Qop import Qop
 import torch.nn as nn
 import torch.nn.functional as F
 

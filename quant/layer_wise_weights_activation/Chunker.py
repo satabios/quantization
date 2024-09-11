@@ -1,6 +1,6 @@
 import torch
-from ModelAnalyzer import ModelAnalyzer
-from Quantizer import Quantizer
+from quant.ModelAnalyzer import ModelAnalyzer
+from quant.Quantizer import Quantizer
 import torch.nn as nn
 from tqdm import tqdm
 from Qact import Qact
@@ -92,18 +92,6 @@ class Chunker(ModelAnalyzer):
 
         return expanded
 
-    # def quantize (self):
-    #     # internal_list = [('Conv2d', 'BatchNorm2d', 'ReLU',), ('Linear',)]
-    #     # for keys in internal_list:
-    #     for lyr_type, layer_names in self.mapped_layers['w_layers'].items():
-    #         for layer_name in layer_names:
-    #             layer_name = layer_name[0]
-    #             layer = eval('self.'+ layer_name)
-    #             affine =  ("channel", 0) if isinstance(layer, torch.nn.Conv2d) else ("tensor",None)
-    #             qdict = {'dtype': torch.int8, 'symentric': True, 'affine': 'tensor', 'affine_dim': None}
-    #             q_params = {'weights': qdict }
-    #             qlayer = Quantizer.from_float(module=layer, data_metry=q_params, quantize_output=False)
-    #             self.replace_layer(layer_name, qlayer)
 
     def replace_modules(self, module, target_class, look_out_for, module_name_to_exclude=""):
         for name, child in module.named_children():

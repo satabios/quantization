@@ -1,6 +1,6 @@
 import torch
-from ModelAnalyzer import ModelAnalyzer
-from Quantizer import Quantizer
+from quant.ModelAnalyzer import ModelAnalyzer
+from quant.Quantizer import Quantizer
 import torch.nn as nn
 from tqdm import tqdm
 from Qact import Qact
