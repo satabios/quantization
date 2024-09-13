@@ -118,7 +118,7 @@ class Chunker(ModelAnalyzer):
 
                 if(target_class=='weights'):
                     affine = ("channel", 0) if isinstance(child, torch.nn.Conv2d) else ("tensor", None)
-                    qdict = {'dtype': torch.int8, 'symentric': True, 'affine': affine[0], 'affine_dim': affine[1]}
+                    qdict = {'dtype': torch.int8, 'symmetric': True, 'affine': affine[0], 'affine_dim': affine[1]}
                     q_params = {'weights': qdict }
                     qlayer = Quantizer.from_float(module=child, data_metry=q_params, quantize_output=False)
                     self.hooks[name] = qlayer.register_forward_pre_hook(pre_forward_hook)

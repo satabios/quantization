@@ -37,7 +37,7 @@ class Quantizer(nn.Module):
         self.input_quant = False
         self.input_quantizer = Qop(
             dtype=data_metrics['weights']['dtype'],
-            symentric=False,
+            symmetric=False,
             affine='tensor',
             affine_dim=None
         )
@@ -47,7 +47,7 @@ class Quantizer(nn.Module):
 
         self.weight_quant = Qop(
             dtype=data_metrics['weights']['dtype'],
-            symentric=data_metrics['weights']['symentric'],
+            symmetric=data_metrics['weights']['symmetric'],
             affine=data_metrics['weights']['affine'],
             affine_dim=data_metrics['weights']['affine_dim']
         )
@@ -64,7 +64,7 @@ class Quantizer(nn.Module):
     @torch.no_grad()
     def forward(self, x):
 
-        if self.input_quant:
+        if self.input_quant: #Activated post to observer stats
             x = self.input_quantizer.quantize(x)
 
         if self.cnn:
