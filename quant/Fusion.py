@@ -1,5 +1,5 @@
 import torch
-from ModelAnalyzer import ModelAnalyzer
+from quant.ModelAnalyzer import ModelAnalyzer
 import torch.ao.quantization.quantize_fx as quantize_fx
 
 class Fuse(ModelAnalyzer):

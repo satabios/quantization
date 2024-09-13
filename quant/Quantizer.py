@@ -34,6 +34,17 @@ class Quantizer(nn.Module):
         self.register_buffer("weight", torch.randn(self.weight_shape, dtype=torch.float16, requires_grad=False))
         self.bias = None if bias is None else bias
 
+        self.input_quant = False
+        self.input_quantizer = Qop(
+            dtype=data_metrics['weights']['dtype'],
+            symentric=False,
+            affine='tensor',
+            affine_dim=None
+        )
+        self.input_observer = torch.ao.quantization.observer.MinMaxObserver(dtype=torch.int8,
+                                                                            quant_min=self.input_quantizer.q_min, quant_max=self.input_quantizer.q_max,
+                                                                            qscheme=torch.per_tensor_affine)#torch.ao.quantization.observer.MinMaxObserver(dtype=torch.int8) #
+
         self.weight_quant = Qop(
             dtype=data_metrics['weights']['dtype'],
             symentric=data_metrics['weights']['symentric'],
@@ -52,6 +63,9 @@ class Quantizer(nn.Module):
 
     @torch.no_grad()
     def forward(self, x):
+
+        if self.input_quant:
+            x = self.input_quantizer.quantize(x)
 
         if self.cnn:
             y = F.conv2d(x, self.weight.to(x.dtype), stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups)
@@ -88,8 +102,10 @@ class Quantizer(nn.Module):
             activations=activations
         )
         new_module.weight = new_module.weight_quant.quantize(module.weight)
-        # print("Initialized weights and quantization parameters.", new_module)
+        new_module.input_observer = new_module.input_observer.to(new_module.weight.device)
         return new_module
+
+
 
     def __repr__(self):
         # Check if 'outputs' and 'weights' are not None and handle accordingly
@@ -109,3 +125,4 @@ class Quantizer(nn.Module):
             return f"QConv2d({self.in_features}, {self.out_features}, kernel_size={self.kernel_size}, stride={self.stride}, padding={self.padding}, dilation={self.dilation}, groups={self.groups}, bias={self.bias is not None} {weight_details})"
         else:
             return f"QLinear({self.in_features}, {self.out_features}, bias={self.bias is not None} {weight_details})"
+

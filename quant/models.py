@@ -61,34 +61,19 @@ class VGG(nn.Module):
 
 
 
-
 class SimpleCNN(nn.Module):
     def __init__(self):
         super(SimpleCNN, self).__init__()
-        # First convolutional layer taking 3 input channels (image), 32 output channels, kernel size 3
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
-        # Batch normalization for the first convolutional layer
-        self.bn1 = nn.BatchNorm2d(32)
-        # Second convolutional layer, taking 32 input channels, 64 output channels, kernel size 3
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        # Batch normalization for the second convolutional layer
-        self.bn2 = nn.BatchNorm2d(64)
-        # Max pooling layer
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        # Fully connected layer taking 64*8*8 input features, 128 output features
-        self.fc1 = nn.Linear(64 * 6 * 6, 128)
-        # Batch normalization for the first fully connected layer
-        self.bn3 = nn.BatchNorm1d(128)
-        # Final fully connected layer producing 10 output features
-        self.fc2 = nn.Linear(128, 10)
+        self.fc1 = nn.Linear(64 * 8 * 8, 512)  # After two maxpool layers, size is reduced to 8x8
+        self.fc2 = nn.Linear(512, 10)  # CIFAR-10 has 10 classes
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.pool(F.relu(x))
-        x = self.pool(F.relu(self.conv2(x)))
-        print(x.shape)
-        x = torch.flatten(x, 1)
-        x = F.relu(self.fc1(x))
-        # Output layer
+        x = self.pool(torch.relu(self.conv1(x)))
+        x = self.pool(torch.relu(self.conv2(x)))
+        x = x.view(-1, 64 * 8 * 8)  # Flatten
+        x = torch.relu(self.fc1(x))
         x = self.fc2(x)
         return x

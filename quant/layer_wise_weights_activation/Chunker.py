@@ -8,11 +8,13 @@ from Qact import Qact
 class Chunker(ModelAnalyzer):
 
     def __init__(self, model, calibiration_data):
+        self.hooks = {}
         self.model = model
         self.calibiration_data = calibiration_data
         self.mapped_layers = ModelAnalyzer(self.model, self.calibiration_data).mapped_layers
         self.interested_layers = []
         self.chunk()
+
 
     def analyze_quantization_potential(self, tensor):
         # Calculate basic statistics
@@ -93,8 +95,24 @@ class Chunker(ModelAnalyzer):
         return expanded
 
 
-    def replace_modules(self, module, target_class, look_out_for, module_name_to_exclude=""):
+    def replace_modules(self, module, target_class, look_out_for,  module_name_to_exclude=""):
+
+
+        def pre_forward_hook(module, input):
+            module.input_observer(input[0])
+            # def _updated_scale(scale, new_scale, momentum):
+            #     if torch.all(scale == 1):
+            #         return new_scale
+            #     return momentum * scale + new_scale * (1.0 - momentum)
+            #
+            # abs_inp = torch.abs(input[0])
+            # input_scale = torch.max(abs_inp)/module.weight_quant.q_max
+            # new_scale = _updated_scale(module.input_scale, input_scale, momentum=0.9)
+            # module.input_scale = new_scale
+
+
         for name, child in module.named_children():
+
             if isinstance(child, look_out_for) and not \
                     any([x == name for x in module_name_to_exclude]):
 
@@ -103,21 +121,22 @@ class Chunker(ModelAnalyzer):
                     qdict = {'dtype': torch.int8, 'symentric': True, 'affine': affine[0], 'affine_dim': affine[1]}
                     q_params = {'weights': qdict }
                     qlayer = Quantizer.from_float(module=child, data_metry=q_params, quantize_output=False)
+                    self.hooks[name] = qlayer.register_forward_pre_hook(pre_forward_hook)
                     setattr(module, name, qlayer)
                 if(target_class=='activations'):
-                    qconfig = {'min_val': child.min_val, 'max_val':child.max_val}
-                    qlayer = Qact(qconfig)
-                    setattr(module, name, qlayer)
+                    child.input_quantizer.scales, child.input_quantizer.zero_point = child.input_observer.calculate_qparams()
+                    child.input_quant = True
 
             else:
                 # Recursively call the function for nested modules
                 self.replace_modules(child, target_class, look_out_for, module_name_to_exclude)
 
+
     def weight_quantize(self):
-        self.replace_modules(module=self.model, target_class='weights', look_out_for = (torch.nn.Conv2d, torch.nn.Linear))
+        hooks = self.replace_modules(module=self.model, target_class='weights', look_out_for = (torch.nn.Conv2d, torch.nn.Linear))
 
     def activation_quantize(self):
-        self.replace_modules(module=self.model, target_class='activations', look_out_for = (torch.ao.quantization.ObserverBase))
+        self.replace_modules(module=self.model, target_class='activations', look_out_for = (Quantizer))
 
 
     def calibirate_model(self):
@@ -130,10 +149,14 @@ class Chunker(ModelAnalyzer):
 
     def chunk(self):
 
-        self.prepare_model()
+        # self.prepare_model()
         self.weight_quantize()
         self.calibirate_model()
+        for hook in self.hooks.values():
+            hook.remove()
         self.activation_quantize()
 
+
+        print("d")
         # isinstance(self.model.backbone.conv0[0], Quantizer)
 

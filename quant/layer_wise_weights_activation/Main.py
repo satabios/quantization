@@ -1,6 +1,6 @@
 import torch
 
-from quant.models import VGG, LinearNet
+from quant.models import VGG, SimpleCNN
 from Chunker import Chunker
 from tqdm import tqdm
 from quant.dataset import Dataset
@@ -26,8 +26,8 @@ def evaluate_model(model, test_loader, device ='cuda'):
 # model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
 dataloader = Dataset('cifar10')
 #
-model = LinearNet(input_size=3*32*32, num_classes=10).to('cuda')
-model.load_state_dict(torch.load('/home/sathya/Desktop/Projects/linear_model_epoch_99.pth'))
+model = SimpleCNN()
+model.load_state_dict(torch.load('../../data/weights/best_model.pth', weights_only=True))
 # model = VGG()
 # model.load_state_dict(torch.load("../../data/weights/vgg.cifar.pretrained.pth"))
 print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")

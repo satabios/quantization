@@ -25,7 +25,7 @@ def evaluate_model(model, test_loader, device ='cuda'):
 dataloader = Dataset('cifar10')
 
 model = VGG()
-model.load_state_dict(torch.load("/home/sathya/Desktop/Projects/quantization/data/weights/vgg.cifar.pretrained.pth"))
+model.load_state_dict(torch.load("../../data/weights/vgg.cifar.pretrained.pth"))
 print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
 
 # #

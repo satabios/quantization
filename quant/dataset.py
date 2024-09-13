@@ -9,12 +9,20 @@ def Dataset(which):
 
         image_size = 512
         transforms = {
-            "train": Compose([
-                RandomCrop(image_size, padding=4),
-                RandomHorizontalFlip(),
-                ToTensor(),
-            ]),
-            "test": ToTensor(),
+            # "train": Compose([
+            #     RandomCrop(image_size, padding=4),
+            #     RandomHorizontalFlip(),
+            #     ToTensor(),
+            # ]),
+            # "test": ToTensor(),
+            'train': Compose([
+                        ToTensor(),
+                        Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize between -1 and 1
+                    ]),
+            'test': Compose([
+                        ToTensor(),
+                        Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize between -1 and 1
+                    ])
         }
         dataset = {}
         for split in ["train", "test"]:
@@ -32,6 +40,7 @@ def Dataset(which):
                 shuffle=(split == 'train'),
                 num_workers=0,
                 pin_memory=True,
+                drop_last = True
             )
         return dataloader['test']
     elif which == 'imagenet':

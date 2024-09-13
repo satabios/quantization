@@ -11,12 +11,10 @@ class Qop:   #currently supporting int8 and bfloat16
         self.symentric = symentric
         self.dtype = dtype
         # Symmetric or Asymmetric
-        if(self.dtype == torch.bfloat16 or self.dtype == torch.float32 or self.dtype == torch.float64 or self.dtype == torch.float16):
-            self.q_min = torch.finfo(self.dtype).min
-            self.q_max = torch.finfo(self.dtype).max
-        else:
-            self.q_min = torch.iinfo(self.dtype).min
-            self.q_max = torch.iinfo(self.dtype).max
+        info = torch.finfo if dtype.is_floating_point else torch.iinfo
+        self.q_min = info(self.dtype).min
+        self.q_max = info(self.dtype).max
+
 
         self.min_val = None
         self.max_val = None
