@@ -15,7 +15,6 @@ class Chunker(ModelAnalyzer):
         self.interested_layers = []
         self.chunk()
 
-
     def analyze_quantization_potential(self, tensor):
         # Calculate basic statistics
         mean_val = tensor.mean()
@@ -40,76 +39,10 @@ class Chunker(ModelAnalyzer):
 
         return "asymmentric"
 
-
-    def replace_layer(self, layer_name, qlayer):
-
-        path_parts = layer_name.split('.')
-        attr_path = 'self.' + '.'.join(path_parts[:-1])
-
-        # Handle nested modules if there's dictionary access
-        if "['" in path_parts[-1]:
-            last_part = path_parts[-1].split('[')[0]  # Get the attribute name before the dictionary access
-            index = path_parts[-1].split('[')[1].strip("']")  # Extract index/key from the string
-            indexed = True
-        else:
-            last_part = path_parts[-1]
-            indexed = False
-
-        # Get the attribute object before the last part
-        attr_obj = eval(attr_path)
-
-        # Set the new quantized layer at the correct position
-        if indexed:
-            # For dictionary-like access within modules
-            getattr(attr_obj, last_part)[index] = qlayer
-        else:
-            # Direct attribute setting
-            setattr(attr_obj, last_part, qlayer)
-
-
-    def prepare_model(self):
-
-        # internal_list = [('Conv2d', 'ReLU'), ('Linear', 'ReLU'), ('Conv2d',), ('Linear',)]
-        for keys in self.mapped_layers['w_layers'].keys():
-            for lyrs_data in self.mapped_layers['w_layers'][keys]:
-                lyrs_data = lyrs_data[0]
-
-                lyrs  = eval('self.' + lyrs_data)
-                pre = torch.ao.quantization.observer.HistogramObserver().to(next(self.model.parameters()).device)
-                post = torch.ao.quantization.observer.HistogramObserver().to(next(self.model.parameters()).device)
-                stubbed_layer = nn.Sequential(
-                                      pre,
-                                      lyrs,
-                                      post
-                                     )
-
-                self.replace_layer(lyrs_data, stubbed_layer)
-
-        #Update the skeleton
-        self.mapped_layers = ModelAnalyzer(self.model, self.calibiration_data).mapped_layers
-
-    def convert_to_modules_notation(self, shorthand):
-        splits = shorthand.split('[')
-        expanded = '._modules['.join(splits)
-
-        return expanded
-
-
     def replace_modules(self, module, target_class, look_out_for,  module_name_to_exclude=""):
-
 
         def pre_forward_hook(module, input):
             module.input_observer(input[0])
-            # def _updated_scale(scale, new_scale, momentum):
-            #     if torch.all(scale == 1):
-            #         return new_scale
-            #     return momentum * scale + new_scale * (1.0 - momentum)
-            #
-            # abs_inp = torch.abs(input[0])
-            # input_scale = torch.max(abs_inp)/module.weight_quant.q_max
-            # new_scale = _updated_scale(module.input_scale, input_scale, momentum=0.9)
-            # module.input_scale = new_scale
-
 
         for name, child in module.named_children():
 
@@ -124,7 +57,8 @@ class Chunker(ModelAnalyzer):
                     self.hooks[name] = qlayer.register_forward_pre_hook(pre_forward_hook)
                     setattr(module, name, qlayer)
                 if(target_class=='activations'):
-                    child.input_quantizer.scales, child.input_quantizer.zero_point = child.input_observer.calculate_qparams()
+                    child.input_quantizer.min_val, child.input_quantizer.max_val = child.input_observer.min_val, child.input_observer.max_val
+                    child.input_quantizer.scales, child.input_quantizer.zero_point  = child.input_quantizer.calculate_params()
                     child.input_quant = True
 
             else:
@@ -155,8 +89,8 @@ class Chunker(ModelAnalyzer):
         for hook in self.hooks.values():
             hook.remove()
         self.activation_quantize()
+        print(self.model.conv1.input_quantizer.scales, self.model.conv1.input_quantizer.zero_point)
 
 
-        print("d")
         # isinstance(self.model.backbone.conv0[0], Quantizer)
 

@@ -16,6 +16,12 @@ class Qop:
         self.q_min = info(self.dtype).min
         self.q_max = info(self.dtype).max
 
+        #Hard Coded for Now
+        # tensor_dtype = torch.float32
+        # tensor_info = torch.finfo if tensor_dtype.is_floating_point else torch.iinfo
+        self.eps = torch.tensor(torch.finfo(torch.float32).eps)
+
+        # self.eps = None
         self.min_val = None
         self.max_val = None
         self.w_a = w_a
@@ -27,29 +33,62 @@ class Qop:
 
         self.scales = None
         self.zero_point = None
+    
+    @torch.no_grad()
+    def calculate_params(self):
+        min_val_neg = torch.min(self.min_val, torch.zeros_like(self.min_val))
+        max_val_pos = torch.max(self.max_val, torch.zeros_like(self.max_val))
+
+        device = min_val_neg.device
+        scale = torch.ones(min_val_neg.size(), dtype=torch.float32, device=device)
+        zero_point = torch.zeros(min_val_neg.size(), dtype=torch.int64, device=device)
+
+        if self.symmetric:
+            # Symmetric Channel/Tensor-Wise
+            max_val_pos = torch.max(-min_val_neg, max_val_pos)
+            scale = max_val_pos / (float(self.q_max - self.q_min) / 2)
+            scale = torch.max(scale, self.eps)
+            
+            if self.dtype in [torch.quint8, torch.uint8]:
+                if self.has_customized_qrange:
+                    # Use down-rounded midpoint for customized quant range
+                    zero_point = zero_point.new_full(zero_point.size(), (self.q_min + self.q_max) // 2)
+                else:
+                    zero_point = zero_point.new_full(zero_point.size(), 128)
+        elif not self.symmetric and self.affine == "channel" and self.affine_dim is not None:
+            # Affine Channel-Wise
+            scale = (self.max_val - self.min_val) / float(self.max_val - self.min_val)
+            scale = torch.where(scale > self.eps, scale, torch.ones_like(scale))
+            # Zero-point calculation
+            zero_point = (-1 * self.min_val / scale).to(torch.int)
+        else:
+            # Affine Tensor-Wise
+            scale = (max_val_pos - min_val_neg) / float(self.q_max - self.q_min)
+            scale = torch.max(scale, self.eps)
+            zero_point = (self.q_min - torch.round(min_val_neg / scale)).to(torch.int)
+            zero_point = torch.clamp(zero_point, self.q_min, self.q_max)
+
+        if len(scale.shape) == 0:
+            scale = torch.tensor([float(scale)], dtype=scale.dtype, device=device)
+        if len(zero_point.shape) == 0:
+            zero_point = torch.tensor([int(zero_point)], dtype=zero_point.dtype, device=device)
+
+
+        return scale, zero_point
+
 
     @torch.no_grad()
     def compute_scales_zero_point(self, tensor=None):
         """Computes scale and zero-point based on tensor's min/max values."""
-        if self.min_val is not None and self.max_val is not None:
+        if self.min_val is None and self.max_val is None:
             if self.symmetric:
-                scales = self.max_val / self.q_max
+                self.max_val = tensor.abs().max()
+                self.min_val = torch.tensor(0)
             else:
-                scales = (self.max_val - self.min_val) / (self.q_max - self.q_min)
-        else:
-            if self.symmetric:
-                self.max_val = tensor.abs().max().item()
-                scales = self.max_val / self.q_max
-            else:
-                self.max_val = tensor.max().item()
-                self.min_val = tensor.min().item()
-                scales = (self.max_val - self.min_val) / (self.q_max - self.q_min)
+                self.max_val = tensor.max()
+                self.min_val = tensor.min()
 
-        if self.symmetric:
-            zero_point = 0
-        else:
-            zero_point = self.q_min - self.min_val / scales
-
+        scales, zero_point = self.calculate_params()
         return scales, zero_point
 
     @torch.no_grad()
@@ -57,17 +96,17 @@ class Qop:
         """Computes scale and zero-point for different dimensions (e.g., per channel)."""
         if dim >= 0:  # Channel-Wise or Group-Wise
             output_dim = tensor.shape[dim]
-            scale = torch.zeros(output_dim)
-            zero_point = torch.zeros(output_dim)
-            for index in range(output_dim):
-                sub_tensor = tensor.select(dim, index)
-                scale[index], zero_point[index] = self.compute_scales_zero_point(sub_tensor)
-
+            sub_tensors = torch.unbind(tensor, dim=dim)
+            scales_and_zero_points = [self.compute_scales_zero_point(sub_tensor) for sub_tensor in sub_tensors]
+            scales, zero_points = zip(*scales_and_zero_points)
+            self.scales = torch.tensor(scales)
+            self.zero_point = torch.tensor(zero_points)
+            
             # Reshape scale and zero_point to match tensor dimensions
             scale_shape = [1] * tensor.dim()
             scale_shape[dim] = output_dim
-            self.scales = scale.view(scale_shape)
-            self.zero_point = zero_point.view(scale_shape)
+            self.scales = self.scales.view(scale_shape)
+            self.zero_point = self.zero_point.view(scale_shape)
         else:  # Tensor-Wise
             self.scales, self.zero_point = self.compute_scales_zero_point(tensor)
 

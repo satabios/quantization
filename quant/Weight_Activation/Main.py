@@ -26,14 +26,14 @@ def evaluate_model(model, test_loader, device ='cuda'):
 # model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
 dataloader = Dataset('cifar10')
 #
-# model = SimpleCNN()
-# model.load_state_dict(torch.load('../../data/weights/best_model.pth', weights_only=True))
-model = VGG().cuda()
-checkpoint = torch.load("../../data/weights/vgg.cifar.pretrained.pth")
-model.load_state_dict(checkpoint)
+model = SimpleCNN()
+model.load_state_dict(torch.load('../../data/weights/best_model.pth',map_location=torch.device('cpu') ))
+# model = VGG()#.cuda()
+# checkpoint = torch.load("../../data/weights/vgg.cifar.pretrained.pth")
+# model.load_state_dict(checkpoint)
 # model = VGG()
 # model.load_state_dict(torch.load("../../data/weights/vgg.cifar.pretrained.pth"))
-print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
+# print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
 
 # #
 # fuser = Fuse(model.eval(), dataloader)
@@ -45,4 +45,5 @@ torch.clear_autocast_cache()
 torch.cuda.empty_cache()
 
 print(quantized_model)
+# print(quantized_model.conv1.input_quantizer.scales, quantized_model.conv1.input_quantizer.zero_point)
 print(f"Quantized Model Accuracy : {evaluate_model(quantized_model, dataloader,device='cpu')}")
