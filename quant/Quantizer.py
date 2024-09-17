@@ -36,13 +36,14 @@ class Quantizer(nn.Module):
 
         self.input_quant = False
         self.input_quantizer = Qop(
-            dtype=data_metrics['weights']['dtype'],
+            dtype=torch.uint8,
             symmetric=False,
             affine='tensor',
             affine_dim=None
         )
-        self.input_observer = torch.ao.quantization.observer.MinMaxObserver(dtype=torch.int8,
-                                                                            quant_min=self.input_quantizer.q_min, quant_max=self.input_quantizer.q_max,
+        self.input_quantizer.max_val = 127
+        self.input_observer = torch.ao.quantization.observer.MinMaxObserver(dtype=torch.quint8,
+
                                                                             qscheme=torch.per_tensor_affine)#torch.ao.quantization.observer.MinMaxObserver(dtype=torch.int8) #
 
         self.weight_quant = Qop(
@@ -64,8 +65,8 @@ class Quantizer(nn.Module):
     @torch.no_grad()
     def forward(self, x):
 
-        if self.input_quant: #Activated post to observer stats
-            x = self.input_quantizer.quantize(x)
+        # if self.input_quant: #Activated post to observer stats
+        #     x = self.input_quantizer.quantize(x)
 
         if self.cnn:
             y = F.conv2d(x, self.weight.to(x.dtype), stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups)
@@ -82,6 +83,9 @@ class Quantizer(nn.Module):
 
         y = self.weight_quant.dequantize(y, activation=True if self.weight_quant.affine=="channel" else False)
 
+        if self.input_quant:
+            y = torch.round(y/self.input_quantizer.scales.to(y.device))# + self.input_quantizer.zero_point.to(y.device)).clamp(0,127)
+            # tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
         return y
 
     @staticmethod
@@ -110,13 +114,13 @@ class Quantizer(nn.Module):
     def __repr__(self):
         # Check if 'outputs' and 'weights' are not None and handle accordingly
         if self.data_metrics and 'outputs' in self.data_metrics and self.data_metrics['outputs']:
-            sym = "sym" if self.data_metrics['outputs'].get('symentric', '') else "asym"
+            sym = "sym" if self.data_metrics['outputs'].get('symentric', True) else "asym"
             output_details = f"outputq={sym}/{str(self.data_metrics['outputs'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['outputs'].get('affine', '')}"
         else:
             output_details = "outputq=None"
 
         if self.data_metrics and 'weights' in self.data_metrics and self.data_metrics['weights']:
-            sym = "sym" if self.data_metrics['weights'].get('symentric', '') else "asym"
+            sym = "sym" if self.data_metrics['weights'].get('symentric', True) else "asym"
             weight_details = f"weightq={sym}/{str(self.data_metrics['weights'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['weights'].get('affine', '')}, {output_details}"
         else:
             weight_details = "weightq=None"
