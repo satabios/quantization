@@ -27,13 +27,12 @@ def evaluate_model(model, test_loader, device ='cuda'):
 dataloader = Dataset('cifar10')
 #
 model = SimpleCNN()
-model.load_state_dict(torch.load('../../data/weights/best_model.pth',map_location=torch.device('cpu') ))
-# model = VGG()#.cuda()
-# checkpoint = torch.load("../../data/weights/vgg.cifar.pretrained.pth")
-# model.load_state_dict(checkpoint)
+model.load_state_dict(torch.load('../../data/weights/best_model.pth',weights_only=True ))
+# model = VGG().cuda()
+# model.load_state_dict(torch.load("../../data/weights/vgg.cifar.pretrained.pth", weights_only=True))
 # model = VGG()
 # model.load_state_dict(torch.load("../../data/weights/vgg.cifar.pretrained.pth"))
-# print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
+print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
 
 # #
 # fuser = Fuse(model.eval(), dataloader)

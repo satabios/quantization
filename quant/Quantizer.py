@@ -41,7 +41,7 @@ class Quantizer(nn.Module):
             affine='tensor',
             affine_dim=None
         )
-        self.input_quantizer.q_max = 127
+        self.input_quantizer.max_val = 127
         self.input_observer = torch.ao.quantization.observer.MinMaxObserver(dtype=torch.quint8,
 
                                                                             qscheme=torch.per_tensor_affine)#torch.ao.quantization.observer.MinMaxObserver(dtype=torch.int8) #
@@ -82,8 +82,10 @@ class Quantizer(nn.Module):
                 y = y+ bias_reshaped
 
         y = self.weight_quant.dequantize(y, activation=True if self.weight_quant.affine=="channel" else False)
+
         if self.input_quant:
-            y = y/self.input_quantizer.scales # + self.input_quantizer.zero_point
+            y = torch.round(y/self.input_quantizer.scales.to(y.device))# + self.input_quantizer.zero_point.to(y.device)).clamp(0,127)
+            # tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
         return y
 
     @staticmethod

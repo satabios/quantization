@@ -59,6 +59,9 @@ class Chunker(ModelAnalyzer):
                 if(target_class=='activations'):
                     child.input_quantizer.min_val, child.input_quantizer.max_val = child.input_observer.min_val, child.input_observer.max_val
                     child.input_quantizer.scales, child.input_quantizer.zero_point  = child.input_quantizer.calculate_params()
+                    #Scales and Zero_Point Fused into Weight Quantizer Scales, Zero Point
+                    # child.weight_quant.scales/=child.input_quantizer.scales
+                    # child.weight_quant.zero_point=child.input_quantizer.zero_point
                     child.input_quant = True
 
             else:
@@ -74,7 +77,7 @@ class Chunker(ModelAnalyzer):
 
 
     def calibirate_model(self):
-        print("Calibrating model...")
+        print("\nCalibrating model...")
         device = next(self.model.parameters()).device
         with torch.no_grad():
             for input_data, _ in tqdm(self.calibiration_data):
@@ -89,8 +92,4 @@ class Chunker(ModelAnalyzer):
         for hook in self.hooks.values():
             hook.remove()
         self.activation_quantize()
-        print(self.model.conv1.input_quantizer.scales, self.model.conv1.input_quantizer.zero_point)
-
-
-        # isinstance(self.model.backbone.conv0[0], Quantizer)
 

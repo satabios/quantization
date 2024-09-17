@@ -50,11 +50,11 @@ class Qop:
             scale = torch.max(scale, self.eps)
             
             if self.dtype in [torch.quint8, torch.uint8]:
-                if self.has_customized_qrange:
+                # if self.has_customized_qrange:
                     # Use down-rounded midpoint for customized quant range
-                    zero_point = zero_point.new_full(zero_point.size(), (self.q_min + self.q_max) // 2)
-                else:
-                    zero_point = zero_point.new_full(zero_point.size(), 128)
+                zero_point = zero_point.new_full(zero_point.size(), (self.q_min + self.q_max) // 2)
+                # else:
+                #     zero_point = zero_point.new_full(zero_point.size(), 128)
         elif not self.symmetric and self.affine == "channel" and self.affine_dim is not None:
             # Affine Channel-Wise
             scale = (self.max_val - self.min_val) / float(self.max_val - self.min_val)

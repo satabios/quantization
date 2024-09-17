@@ -9,12 +9,15 @@ def Dataset(which):
 
         image_size = 512
         transforms = {
-        #     "train": Compose([
-        #         RandomCrop(image_size, padding=4),
-        #         RandomHorizontalFlip(),
-        #         ToTensor(),
-        #     ]),
-        #     "test": ToTensor(),
+            #VGG
+            # "train": Compose([
+            #     RandomCrop(image_size, padding=4),
+            #     RandomHorizontalFlip(),
+            #     ToTensor(),
+            # ]),
+            # "test": ToTensor(),
+
+            #SimpleCNN
             'train': Compose([
                         ToTensor(),
                         Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize between -1 and 1
