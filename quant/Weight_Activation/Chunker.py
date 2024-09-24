@@ -97,12 +97,6 @@ class Chunker(ModelAnalyzer):
                         child.bias = (child.bias - qweight.to(torch.int32) * child.input_zero_point).squeeze().view(1,-1)
                         child.scalers = ((child.input_qscale * child.weight_qscale) / (child.output_qscale)).squeeze().view(1,-1)
 
-
-
-
-
-
-
             else:
                     # Recursively call the function for nested modules
                     self.replace_modules(child, target_class, look_out_for, module_name_to_exclude)
@@ -117,17 +111,18 @@ class Chunker(ModelAnalyzer):
             for input_data, _ in tqdm(self.calibiration_data):
                 _ = self.model(input_data.to(device))
         print("Calibration done!")
+
     def attach_observers_observe(self):
         self.replace_modules(module=self.model, target_class='attach_observers', look_out_for=(torch.nn.Conv2d, torch.nn.Linear))
         self.calibirate_model()
         #Remove Hooks
         for hook in self.attached_hooks:
             hook.remove()
+            
     def compute_qstats(self):
         self.replace_modules(module=self.model, target_class='compute_qstats',look_out_for=(Quantizer))
 
     def chunk(self):
-
         self.attach_observers_observe()
         self.weight_quantize()
         self.compute_qstats()

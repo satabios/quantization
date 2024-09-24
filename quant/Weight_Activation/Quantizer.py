@@ -34,17 +34,9 @@ class Quantizer(nn.Module):
         self.register_buffer("weight", torch.randn(self.weight_shape, dtype=torch.float16, requires_grad=False))
         self.bias = bias
 
-
-
         self.weight_qscale, self.weight_zero_point = None, None
-        self.bias_qscale, self.bias_zero_point = None, None
-        self.input_qscale, self.input_zero_point = None, None
-        self.output_qscale, self.output_zero_point = None, None
+        self.output_zero_point = None, None
         self.scalers = None
-
-        self.pre_computed = None
-
-        self.quantize_output = quantize_output
 
     def to(self, *args, **kwargs):
         super().to(*args, **kwargs)
@@ -65,7 +57,6 @@ class Quantizer(nn.Module):
 
         if self.bias is not None:
             y = y + self.bias.to(y.device)
-
         y = y * self.scalers.to(y.device) + self.output_zero_point.to(y.device)
 
 

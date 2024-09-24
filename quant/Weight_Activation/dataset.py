@@ -5,28 +5,28 @@ import math
 import torch
 import os
 def Dataset(which):
-    if which == 'cifar10':
+    if 'cifar10' in which:
 
         image_size = 512
         transforms = {
             # VGG
+        
             "train": Compose([
                 RandomCrop(image_size, padding=4),
                 RandomHorizontalFlip(),
                 ToTensor(),
             ]),
-            "test": ToTensor(),
-
-            #SimpleCNN
-            # 'train': Compose([
-            #             ToTensor(),
-            #             Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize between -1 and 1
-            #         ]),
-            # 'test': Compose([
-            #             ToTensor(),
-            #             Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize between -1 and 1
-            #         ])
-        }
+            "test": ToTensor(),} if('vgg' in which) else \
+            {
+                'train': Compose([
+                            ToTensor(),
+                            Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize between -1 and 1
+                        ]),
+                'test': Compose([
+                            ToTensor(),
+                            Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize between -1 and 1
+                        ])
+            }
         dataset = {}
         for split in ["train", "test"]:
             dataset[split] = CIFAR10(
