@@ -1,5 +1,5 @@
 import torch
-from quant.Qop import Qop
+from Qop import Qop
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -32,26 +32,17 @@ class Quantizer(nn.Module):
 
         self.weight_shape = (self.out_features, self.in_features, *self.kernel_size) if cnn else (self.out_features, self.in_features)
         self.register_buffer("weight", torch.randn(self.weight_shape, dtype=torch.float16, requires_grad=False))
-        self.bias = None if bias is None else bias
+        self.bias = bias
 
-        self.input_quant = False
-        self.input_quantizer = Qop(
-            dtype=torch.uint8,
-            symmetric=False,
-            affine='tensor',
-            affine_dim=None
-        )
-        self.input_quantizer.max_val = 127
-        self.input_observer = torch.ao.quantization.observer.MinMaxObserver(dtype=torch.quint8,
 
-                                                                            qscheme=torch.per_tensor_affine)#torch.ao.quantization.observer.MinMaxObserver(dtype=torch.int8) #
 
-        self.weight_quant = Qop(
-            dtype=data_metrics['weights']['dtype'],
-            symmetric=data_metrics['weights']['symmetric'],
-            affine=data_metrics['weights']['affine'],
-            affine_dim=data_metrics['weights']['affine_dim']
-        )
+        self.weight_qscale, self.weight_zero_point = None, None
+        self.bias_qscale, self.bias_zero_point = None, None
+        self.input_qscale, self.input_zero_point = None, None
+        self.output_qscale, self.output_zero_point = None, None
+        self.scalers = None
+
+        self.pre_computed = None
 
         self.quantize_output = quantize_output
 
@@ -62,35 +53,32 @@ class Quantizer(nn.Module):
             self.bias = self.bias.to(*args, **kwargs)
         return self
 
+
     @torch.no_grad()
     def forward(self, x):
 
-        # if self.input_quant: #Activated post to observer stats
-        #     x = self.input_quantizer.quantize(x)
 
         if self.cnn:
             y = F.conv2d(x, self.weight.to(x.dtype), stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups)
-            if self.bias is not None:
-                # Ensure the bias tensor is reshaped for broadcasting
-                bias_reshaped = self.bias.view(1, -1, 1, 1)  # For Conv2D
-                y = y+ bias_reshaped
         else:
             y = F.linear(x, self.weight.to(x.dtype))
-            if self.bias is not None:
-                # Ensure the bias tensor is reshaped for broadcasting
-                bias_reshaped = self.bias.view(1, -1)  # For Linear
-                y = y+ bias_reshaped
 
-        y = self.weight_quant.dequantize(y, activation=True if self.weight_quant.affine=="channel" else False)
+        if self.bias is not None:
+            y = y + self.bias.to(y.device)
 
-        if self.input_quant:
-            y = torch.round(y/self.input_quantizer.scales.to(y.device))# + self.input_quantizer.zero_point.to(y.device)).clamp(0,127)
-            # tensor / self.scales + self.zero_point).clamp(self.q_min, self.q_max)
+        y = y * self.scalers.to(y.device) + self.output_zero_point.to(y.device)
+
+
         return y
 
     @staticmethod
     def from_float(module, quantize_output=False, activations=None, data_metry=None):
-        # print("Creating Quantizer from module:", module)
+
+        if module.bias is not None:
+            if(isinstance(module, nn.Conv2d)):
+                bias_reshaped = module.bias.view(1, -1, 1, 1)
+            elif(isinstance(module, nn.Linear)):
+                bias_reshaped = module.bias.view(1, -1)  # For Linear
         new_module = Quantizer(
             in_features=module.in_features if isinstance(module, nn.Linear) else module.in_channels,
             out_features=module.out_features if isinstance(module, nn.Linear) else module.out_channels,
@@ -99,14 +87,24 @@ class Quantizer(nn.Module):
             padding=module.padding if isinstance(module, nn.Conv2d) else None,
             dilation=module.dilation if isinstance(module, nn.Conv2d) else None,
             groups=module.groups if isinstance(module, nn.Conv2d) else None,
-            bias=module.bias,
+            bias=bias_reshaped if module.bias is not None else torch.tensor(0),
             quantize_output=quantize_output,
             cnn=isinstance(module, nn.Conv2d),
             data_metrics=data_metry,
             activations=activations
         )
-        new_module.weight = new_module.weight_quant.quantize(module.weight)
-        new_module.input_observer = new_module.input_observer.to(new_module.weight.device)
+
+        weight_quant = Qop(
+            dtype=data_metry['weights']['dtype'],
+            symmetric=data_metry['weights']['symmetric'],
+            affine=data_metry['weights']['affine'],
+            affine_dim=data_metry['weights']['affine_dim']
+        )
+
+
+        new_module.weight = weight_quant.quantize(module.weight)
+        new_module.weight_qscale, new_module.weight_zero_point = weight_quant.scales, weight_quant.zero_point
+
         return new_module
 
 

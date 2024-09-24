@@ -1,80 +1,114 @@
 import torch
-from quant.ModelAnalyzer import ModelAnalyzer
-from quant.Quantizer import Quantizer
+from ModelAnalyzer import ModelAnalyzer
+from Quantizer import Quantizer
 import torch.nn as nn
+from Qop import Qop
 from tqdm import tqdm
-from Qact import Qact
 
 class Chunker(ModelAnalyzer):
 
     def __init__(self, model, calibiration_data):
-        self.hooks = {}
         self.model = model
         self.calibiration_data = calibiration_data
         self.mapped_layers = ModelAnalyzer(self.model, self.calibiration_data).mapped_layers
         self.interested_layers = []
+        self.hooks = {}
+        self.attached_hooks = []
         self.chunk()
 
-    def analyze_quantization_potential(self, tensor):
-        # Calculate basic statistics
-        mean_val = tensor.mean()
-        min_val = tensor.min()
-        max_val = tensor.max()
+    def replace_modules(self, module, target_class, look_out_for, module_name_to_exclude=""):
 
-        # Calculate the absolute maximum for symmetric quantization comparison
-        abs_max = torch.max(torch.abs(min_val), torch.abs(max_val))
+        def find_optimal_qdict(tensor, activation=False):
+            qerror = float('inf')
+            qdict = None
+            for affine in [("channel",0), ("tensor",None)]:
+                for symmetric in [False, True]:
+                    test_qlayer = Qop(
+                                        dtype=torch.int8,
+                                        symmetric=symmetric,
+                                        affine=affine[0],
+                                        affine_dim=affine[1]
+                                    )
+                    quantized_tensor = test_qlayer.quantize(tensor)
+                    dequantized_tensor = test_qlayer.dequantize(quantized_tensor, activation)
+                    error = test_qlayer.compute_dequantization_error(quantized_tensor, dequantized_tensor)
+                    if(error<qerror):
+                        qerror = error
+                        qdict =  {'dtype': torch.int8, 'symmetric': symmetric, 'affine': affine[0], 'affine_dim': affine[1]}
+            return qdict
 
-        # Determine potential for symmetric quantization
-        symmetric_threshold = 0.20 * abs_max  # Threshold can be adjusted based on specific needs
-        if isinstance(symmetric_threshold, torch.Tensor):
-            symmetric_threshold = symmetric_threshold.item()
+        import functools
+        def _stat_observer(module, input, output, module_name):
+            input = input[0]
+            if(module_name not in self.hooks):
+                self.hooks[module_name] = {'input_stats': [float('inf'), float('-inf')], 'output_stats':  [float('inf'), float('-inf')]}
+            self.hooks[module_name]['input_stats'] = [ min(self.hooks[module_name]['input_stats'][0], input.min()), max(self.hooks[module_name]['input_stats'][1], input.max()) ]
+            self.hooks[module_name]['output_stats'] = [ min(self.hooks[module_name]['output_stats'] [0], input.min()), max(self.hooks[module_name]['output_stats'] [1], input.max()) ]
 
-        if torch.isclose(mean_val, torch.tensor(0.0), atol=symmetric_threshold):
-            return "symmentric"
-
-        range_positive = max_val - mean_val
-        range_negative = mean_val - min_val
-        if torch.isclose(range_positive, range_negative, atol=symmetric_threshold):
-            return "asymmentric"
-
-        return "asymmentric"
-
-    def replace_modules(self, module, target_class, look_out_for,  module_name_to_exclude=""):
-
-        def pre_forward_hook(module, input):
-            module.input_observer(input[0])
+        def dim_changer(shape, tensor):
+            dimension = list(shape).index(tensor.shape[0])
+            new_dim = []
+            for idx in range(len(shape)):
+                if (idx == dimension):
+                    new_dim.append(-1)
+                else:
+                    new_dim.append(1)
+            return tensor.view(new_dim)
 
         for name, child in module.named_children():
-
             if isinstance(child, look_out_for) and not \
                     any([x == name for x in module_name_to_exclude]):
 
                 if(target_class=='weights'):
-                    affine = ("channel", 0) if isinstance(child, torch.nn.Conv2d) else ("tensor", None)
+                    affine = ("channel", 0)# if isinstance(child, torch.nn.Conv2d) else ("tensor", None)
                     qdict = {'dtype': torch.int8, 'symmetric': True, 'affine': affine[0], 'affine_dim': affine[1]}
+                    # qdict = find_optimal_qdict(child.weight)
                     q_params = {'weights': qdict }
                     qlayer = Quantizer.from_float(module=child, data_metry=q_params, quantize_output=False)
-                    self.hooks[name] = qlayer.register_forward_pre_hook(pre_forward_hook)
                     setattr(module, name, qlayer)
-                if(target_class=='activations'):
-                    child.input_quantizer.min_val, child.input_quantizer.max_val = child.input_observer.min_val, child.input_observer.max_val
-                    child.input_quantizer.scales, child.input_quantizer.zero_point  = child.input_quantizer.calculate_params()
-                    #Scales and Zero_Point Fused into Weight Quantizer Scales, Zero Point
-                    # child.weight_quant.scales/=child.input_quantizer.scales
-                    # child.weight_quant.zero_point=child.input_quantizer.zero_point
-                    child.input_quant = True
+                elif (target_class == 'attach_observers'):
+                    self.attached_hooks.append(child.register_forward_hook(functools.partial(_stat_observer, module_name=name)))
+                elif (target_class == 'compute_qstats'):
+
+                    Qin =  Qop(
+                        dtype=torch.int8,
+                        symmetric=False,
+                        affine='tensor',
+                        affine_dim=0
+                    )
+                    Qout = Qop(
+                        dtype=torch.int8,
+                        symmetric=False,
+                        affine='tensor',
+                        affine_dim=0
+                    )
+                    Qin.min_val, Qin.max_val = self.hooks[name]['input_stats']
+                    Qout.min_val, Qout.max_val = self.hooks[name]['output_stats']
+                    child.input_qscale, child.input_zero_point = Qin.calculate_params()[0].item(), Qout.calculate_params()[0].item()
+                    child.output_qscale, child.output_zero_point = Qout.calculate_params()[0].item(), Qout.calculate_params()[0]
+
+                    if (child.weight.dim()==4):
+                        qweight = child.weight.sum((1, 2, 3))
+                        child.bias = (child.bias - qweight.to(torch.int32) * child.input_zero_point).squeeze().view(1,-1,1,1)
+                        child.scalers = ((child.input_qscale * child.weight_qscale) / (child.output_qscale)).squeeze().view(1,-1,1,1)
+
+                    elif (child.weight.dim()==2):
+                        qweight = child.weight.sum(1)
+                        child.bias = (child.bias - qweight.to(torch.int32) * child.input_zero_point).squeeze().view(1,-1)
+                        child.scalers = ((child.input_qscale * child.weight_qscale) / (child.output_qscale)).squeeze().view(1,-1)
+
+
+
+
+
+
 
             else:
-                # Recursively call the function for nested modules
-                self.replace_modules(child, target_class, look_out_for, module_name_to_exclude)
-
+                    # Recursively call the function for nested modules
+                    self.replace_modules(child, target_class, look_out_for, module_name_to_exclude)
 
     def weight_quantize(self):
-        hooks = self.replace_modules(module=self.model, target_class='weights', look_out_for = (torch.nn.Conv2d, torch.nn.Linear))
-
-    def activation_quantize(self):
-        self.replace_modules(module=self.model, target_class='activations', look_out_for = (Quantizer))
-
+        self.replace_modules(module=self.model, target_class='weights', look_out_for = (torch.nn.Conv2d, torch.nn.Linear))
 
     def calibirate_model(self):
         print("\nCalibrating model...")
@@ -83,13 +117,18 @@ class Chunker(ModelAnalyzer):
             for input_data, _ in tqdm(self.calibiration_data):
                 _ = self.model(input_data.to(device))
         print("Calibration done!")
+    def attach_observers_observe(self):
+        self.replace_modules(module=self.model, target_class='attach_observers', look_out_for=(torch.nn.Conv2d, torch.nn.Linear))
+        self.calibirate_model()
+        #Remove Hooks
+        for hook in self.attached_hooks:
+            hook.remove()
+    def compute_qstats(self):
+        self.replace_modules(module=self.model, target_class='compute_qstats',look_out_for=(Quantizer))
 
     def chunk(self):
 
-        # self.prepare_model()
+        self.attach_observers_observe()
         self.weight_quantize()
-        self.calibirate_model()
-        for hook in self.hooks.values():
-            hook.remove()
-        self.activation_quantize()
+        self.compute_qstats()
 
