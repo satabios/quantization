@@ -104,13 +104,10 @@ class Quantizer(nn.Module):
         # Check if 'outputs' and 'weights' are not None and handle accordingly
         if self.data_metrics and 'outputs' in self.data_metrics and self.data_metrics['outputs']:
             sym = "sym" if self.data_metrics['outputs'].get('symentric', True) else "asym"
-            output_details = f"outputq={sym}/{str(self.data_metrics['outputs'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['outputs'].get('affine', '')}"
-        else:
-            output_details = "outputq=None"
-
+           
         if self.data_metrics and 'weights' in self.data_metrics and self.data_metrics['weights']:
             sym = "sym" if self.data_metrics['weights'].get('symentric', True) else "asym"
-            weight_details = f"weightq={sym}/{str(self.data_metrics['weights'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['weights'].get('affine', '')}, {output_details}"
+            weight_details = f"weightq={sym}/{str(self.data_metrics['weights'].get('dtype', '')).split('.')[-1]}/{self.data_metrics['weights'].get('affine', '')}"
         else:
             weight_details = "weightq=None"
 
@@ -119,3 +116,15 @@ class Quantizer(nn.Module):
         else:
             return f"QLinear({self.in_features}, {self.out_features}, bias={self.bias is not None} {weight_details})"
 
+
+
+
+class QuantizedMaxPool2d(nn.MaxPool2d):
+    def forward(self, x):
+        # current version PyTorch does not support integer-based MaxPool
+        return super().forward(x.float()).to(torch.int8)
+
+class QuantizedAvgPool2d(nn.AvgPool2d):
+    def forward(self, x):
+        # current version PyTorch does not support integer-based AvgPool
+        return super().forward(x.float()).to(torch.int8)

@@ -42,8 +42,9 @@ class Chunker(ModelAnalyzer):
             input = input[0]
             if(module_name not in self.hooks):
                 self.hooks[module_name] = {'input_stats': [float('inf'), float('-inf')], 'output_stats':  [float('inf'), float('-inf')]}
+            self.hooks[module_name]['type'] = type(module)
             self.hooks[module_name]['input_stats'] = [ min(self.hooks[module_name]['input_stats'][0], input.min()), max(self.hooks[module_name]['input_stats'][1], input.max()) ]
-            self.hooks[module_name]['output_stats'] = [ min(self.hooks[module_name]['output_stats'] [0], input.min()), max(self.hooks[module_name]['output_stats'] [1], input.max()) ]
+            self.hooks[module_name]['output_stats'] = [ min(self.hooks[module_name]['output_stats'][0], output.max()), max(self.hooks[module_name]['output_stats'][1], output.max()) ]
 
         def dim_changer(shape, tensor):
             dimension = list(shape).index(tensor.shape[0])
@@ -68,35 +69,44 @@ class Chunker(ModelAnalyzer):
                     setattr(module, name, qlayer)
                 elif (target_class == 'attach_observers'):
                     self.attached_hooks.append(child.register_forward_hook(functools.partial(_stat_observer, module_name=name)))
+                elif (target_class == 'misc_layers'):
+                    from Quantizer import QuantizedAvgPool2d, QuantizedMaxPool2d
+                    if(isinstance(child, torch.nn.MaxPool2d)):
+                        setattr(module, name, QuantizedMaxPool2d(kernel_size=child.kernel_size, stride=child.stride, padding=child.padding))
+                    elif(isinstance(child, torch.nn.AvgPool2d)):
+                        setattr(module, name, QuantizedAvgPool2d(kernel_size=child.kernel_size, stride=child.stride, padding=child.padding))
+
                 elif (target_class == 'compute_qstats'):
 
                     Qin =  Qop(
                         dtype=torch.int8,
                         symmetric=False,
                         affine='tensor',
-                        affine_dim=0
+                        affine_dim=None
                     )
                     Qout = Qop(
                         dtype=torch.int8,
                         symmetric=False,
                         affine='tensor',
-                        affine_dim=0
+                        affine_dim=None
                     )
                     Qin.min_val, Qin.max_val = self.hooks[name]['input_stats']
-                    Qout.min_val, Qout.max_val = self.hooks[name]['output_stats']
+                    Qout.min_val, Qout.max_val = self.hooks[name]['output_stats']  # Replace with Activation Stats
                     child.input_qscale, child.input_zero_point = Qin.calculate_params()[0].item(), Qout.calculate_params()[0].item()
                     child.output_qscale, child.output_zero_point = Qout.calculate_params()[0].item(), Qout.calculate_params()[0]
 
                     if (child.weight.dim()==4):
                         qweight = child.weight.sum((1, 2, 3))
-                        child.bias = (child.bias - qweight.to(torch.int32) * child.input_zero_point).squeeze().view(1,-1,1,1)
+                        child.bias = (child.bias.squeeze() - qweight.to(torch.int32) * child.input_zero_point).squeeze().view(1,-1,1,1)
                         child.scalers = ((child.input_qscale * child.weight_qscale) / (child.output_qscale)).squeeze().view(1,-1,1,1)
 
                     elif (child.weight.dim()==2):
                         qweight = child.weight.sum(1)
-                        child.bias = (child.bias - qweight.to(torch.int32) * child.input_zero_point).squeeze().view(1,-1)
+                        child.bias = (child.bias.squeeze()  - qweight.to(torch.int32) * child.input_zero_point).squeeze().view(1,-1)
                         child.scalers = ((child.input_qscale * child.weight_qscale) / (child.output_qscale)).squeeze().view(1,-1)
-
+                    # Formula is :
+                    # y = Conv(x, w) + bias or y = Linear(x, w) + bias
+                    # y = y * scalers + output_zero_point
             else:
                     # Recursively call the function for nested modules
                     self.replace_modules(child, target_class, look_out_for, module_name_to_exclude)
@@ -110,7 +120,7 @@ class Chunker(ModelAnalyzer):
         with torch.no_grad():
             for input_data, _ in tqdm(self.calibiration_data):
                 _ = self.model(input_data.to(device))
-        print("Calibration done!")
+        print("Calibration done \n")
 
     def attach_observers_observe(self):
         self.replace_modules(module=self.model, target_class='attach_observers', look_out_for=(torch.nn.Conv2d, torch.nn.Linear))
@@ -118,12 +128,16 @@ class Chunker(ModelAnalyzer):
         #Remove Hooks
         for hook in self.attached_hooks:
             hook.remove()
-            
+
     def compute_qstats(self):
         self.replace_modules(module=self.model, target_class='compute_qstats',look_out_for=(Quantizer))
+
+    def misc_layers(self):
+        self.replace_modules(module=self.model, target_class='misc_layers',look_out_for=(torch.nn.MaxPool2d, torch.nn.AvgPool2d))
 
     def chunk(self):
         self.attach_observers_observe()
         self.weight_quantize()
         self.compute_qstats()
+        # self.misc_layers()
 

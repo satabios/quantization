@@ -1,20 +1,18 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
-import seaborn as sns
-
 
 class Qop:
     """Quantization operation supporting int8 and bfloat16 data types"""
 
-    def __init__(self, dtype, w_a=None, affine='tensor', affine_dim=None, group_size=-1, symmetric=False):
+    def __init__(self, dtype=None,bits=None, w_a=None, affine='tensor', affine_dim=None, group_size=-1, symmetric=False):
         self.symmetric = symmetric
-        self.dtype = dtype
-        info = torch.finfo if dtype.is_floating_point else torch.iinfo
-        self.q_min = info(self.dtype).min
-        self.q_max = info(self.dtype).max
+        if(dtype is not None):
+            self.dtype = dtype
+            info = torch.finfo if dtype.is_floating_point else torch.iinfo
+            self.q_min = info(self.dtype).min
+            self.q_max = info(self.dtype).max
+        
 
         #Hard Coded for Now
         # tensor_dtype = torch.float32
@@ -48,7 +46,7 @@ class Qop:
             # Symmetric Channel/Tensor-Wise
             max_val_pos = torch.max(-min_val_neg, max_val_pos)
             scale = max_val_pos / (float(self.q_max - self.q_min) / 2)
-            scale = torch.max(scale, torch.tensor(self.eps, device=device)).detach()
+            scale = torch.max(scale, self.eps)
 
             if self.dtype in [torch.quint8, torch.uint8]:
                 zero_point = zero_point.new_full(zero_point.size(), (self.q_min + self.q_max) // 2)
@@ -60,7 +58,7 @@ class Qop:
         else:
             # Affine Tensor-Wise
             scale = (max_val_pos - min_val_neg) / float(self.q_max - self.q_min)
-            scale = torch.max(scale, torch.tensor(self.eps, device=device))
+            scale = torch.max(scale, self.eps)
             zero_point = (self.q_min - torch.round(min_val_neg / scale)).to(torch.int)
             zero_point = torch.clamp(zero_point, self.q_min, self.q_max)
 
@@ -89,7 +87,7 @@ class Qop:
                 self.max_val = torch.tensor(max_val)
                 if self.symmetric:
                     self.min_val = torch.zeros_like(self.max_val)
-                self.min_val = torch.tensor(self.min_val).detach()
+                # self.min_val = torch.tensor(self.min_val).detach()
             else:
                 if self.symmetric:
                     self.max_val = tensor.abs().max()

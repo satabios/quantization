@@ -1,5 +1,5 @@
 import torch
-from quant.ModelAnalyzer import ModelAnalyzer
+from ModelAnalyzer import ModelAnalyzer
 import torch.ao.quantization.quantize_fx as quantize_fx
 
 class Fuse(ModelAnalyzer):
@@ -28,6 +28,7 @@ class Fuse(ModelAnalyzer):
 
         try: #Try with Custom Fusion
             model_fused = torch.quantization.fuse_modules(self.model, fusing_layers, inplace=True)
+            print("Custom Fusion Done")
         except:
             model_fused = quantize_fx.fuse_fx(self.model)
 
