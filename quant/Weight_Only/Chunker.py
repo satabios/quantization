@@ -1,7 +1,8 @@
 import torch
-from quant.ModelAnalyzer import ModelAnalyzer
-from quant.Quantizer import Quantizer
+from ModelAnalyzer import ModelAnalyzer
+from Quantizer import Quantizer
 import torch.nn as nn
+from Qop import Qop
 from tqdm import tqdm
 
 class Chunker(ModelAnalyzer):
@@ -14,13 +15,36 @@ class Chunker(ModelAnalyzer):
         self.chunk()
 
     def replace_modules(self, module, target_class, look_out_for, module_name_to_exclude=""):
+
+        def find_optimal_qdict(tensor, activation=False):
+            qerror = float('inf')
+            qdict = None
+            for affine in [("channel",0), ("tensor",None)]:
+                for symmetric in [False, True]:
+                    test_qlayer = Qop(
+                                        dtype=torch.int8,
+                                        symmetric=symmetric,
+                                        affine=affine[0],
+                                        affine_dim=affine[1]
+                                    )
+                    quantized_tensor = test_qlayer.quantize(tensor)
+                    dequantized_tensor = test_qlayer.dequantize(quantized_tensor, activation)
+                    error = test_qlayer.compute_dequantization_error(quantized_tensor, dequantized_tensor)
+                    if(error<qerror):
+                        qerror = error
+                        qdict =  {'dtype': torch.int8, 'symmetric': symmetric, 'affine': affine[0], 'affine_dim': affine[1]}
+            return qdict
+
+
+
         for name, child in module.named_children():
             if isinstance(child, look_out_for) and not \
                     any([x == name for x in module_name_to_exclude]):
 
                 if(target_class=='weights'):
-                    affine = ("channel", 0) if isinstance(child, torch.nn.Conv2d) else ("tensor", None)
+                    affine = ("channel", 0)# if isinstance(child, torch.nn.Conv2d) else ("tensor", None)
                     qdict = {'dtype': torch.int8, 'symmetric': True, 'affine': affine[0], 'affine_dim': affine[1]}
+                    # qdict = find_optimal_qdict(child.weight)
                     q_params = {'weights': qdict }
                     qlayer = Quantizer.from_float(module=child, data_metry=q_params, quantize_output=False)
                     setattr(module, name, qlayer)

@@ -1,12 +1,15 @@
 import torch
-from quant.models import VGG, SimpleCNN
+from models import VGG, SimpleCNN
 from Chunker import Chunker
 from tqdm import tqdm
-from quant.dataset import Dataset
+from dataset import Dataset
+import copy
 
+@torch.inference_mode()
 def evaluate_model(model, test_loader, device ='cuda'):
+
+    model = copy.deepcopy(model).to(device)
     model.eval()
-    model.to(device)
     correct = 0
     total = 0
     with torch.no_grad():
@@ -20,16 +23,15 @@ def evaluate_model(model, test_loader, device ='cuda'):
     accuracy = 100 * correct / total
     return accuracy
 
-
 # model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
 dataloader = Dataset('cifar10')
 
-model = SimpleCNN()
-model.load_state_dict(torch.load('../../data/weights/best_model.pth',map_location=torch.device('cpu')))
-# model = VGG()#.cuda()
-# checkpoint = torch.load("../../data/weights/vgg.cifar.pretrained.pth", weights_only=True)
-# model.load_state_dict(checkpoint)
-# print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cpu')}")
+# model = SimpleCNN()
+# model.load_state_dict(torch.load('data/weights/best_model.pth',map_location=torch.device('cpu')))
+model = VGG()#.cuda()
+checkpoint = torch.load("../../data/weights/vgg.cifar.pretrained.pth", weights_only=True)
+model.load_state_dict(checkpoint)
+print(f"Original Model Accuracy : {evaluate_model(model, dataloader,device='cuda')}")
 
 # #
 # fuser = Fuse(model.eval(), dataloader)
